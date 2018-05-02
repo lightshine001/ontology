@@ -541,7 +541,6 @@ func InvHandle(data *msgCommon.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args 
 	inv.Deserialization(data.Payload[:length])
 	inv.Verify(data.Payload[msgCommon.MSG_HDR_LEN:length])
 
-	//localPeer := p2p.Self
 	remotePeer := p2p.GetPeer(data.Id)
 	if remotePeer == nil {
 		return errors.New("remotePeer invalid in InvHandle")

@@ -61,8 +61,6 @@ func (this *P2PActor) Receive(ctx actor.Context) {
 		log.Info("p2p actor started")
 	case *actor.Restart:
 		log.Info("p2p actor restart")
-	case *StartServerReq:
-		this.handleStartServerReq(ctx, msg)
 	case *StopServerReq:
 		this.handleStopServerReq(ctx, msg)
 	case *GetPortReq:
@@ -102,18 +100,6 @@ func (this *P2PActor) Receive(ctx actor.Context) {
 		if nil != err {
 			log.Error("Error Xmit message ", err.Error(), reflect.TypeOf(ctx.Message()))
 		}
-	}
-}
-
-//start handler
-func (this *P2PActor) handleStartServerReq(ctx actor.Context, req *StartServerReq) {
-	startSync := ctx.Message().(*StartServerReq).StartSync
-	err := this.server.Start(startSync)
-	if ctx.Sender() != nil {
-		resp := &StartServerRsp{
-			Error: err,
-		}
-		ctx.Sender().Request(resp, ctx.Self())
 	}
 }
 

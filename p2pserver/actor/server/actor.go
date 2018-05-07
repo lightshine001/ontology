@@ -97,8 +97,6 @@ func (this *P2PActor) Receive(ctx actor.Context) {
 		this.server.OnHeaderReceive(msg.Headers)
 	case *common.AppendBlock:
 		this.server.OnBlockReceive(msg.Block)
-	//case *common.RemoveFlightHeight:
-	//	this.server.RemoveFlightHeight(msg.Id, msg.Height)
 	default:
 		err := this.server.Xmit(ctx.Message())
 		if nil != err {

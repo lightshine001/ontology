@@ -81,7 +81,6 @@ func (this Neighbors) Serialization() ([]byte, error) {
 			return nil, err
 		}
 	}
-
 	checkSumBuf := CheckSum(p.Bytes())
 	this.Hdr.Init("neighbors", checkSumBuf, uint32(len(p.Bytes())))
 

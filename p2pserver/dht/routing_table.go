@@ -19,7 +19,8 @@
 package dht
 
 import (
-
+	"crypto/sha256"
+	//"fmt"
 	"sync"
 
 	//"github.com/ontio/ontology/common"

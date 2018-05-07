@@ -378,10 +378,11 @@ func (this *DHT) recvUDPMsg() {
 			log.Error("ReadFromUDP error:", err)
 			return
 		}
+		//this.processPacket(from, buf[:nbytes])
 		// Todo:
-		pk := &types.DHTMessage{
-			From:    from,
-			Payload: buf[:nbytes],
+		pk := &DHTMessage{
+			from:    from,
+			payload: buf[:nbytes],
 		}
 		this.recvCh <- pk
 	}

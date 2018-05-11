@@ -52,6 +52,7 @@ const (
 	DEFAULT_MAX_SYNC_HEADER   = 500
 	DEFAULT_ENABLE_CONSENSUS  = true
 	DEFAULT_DISABLE_EVENT_LOG = false
+	DEFAULT_GAS_LIMIT         = 30000
 )
 
 
@@ -137,6 +138,8 @@ type CommonConfig struct {
 	EnableConsensus bool
 	DisableEventLog bool
 	SystemFee       map[string]int64
+	GasLimit        uint64
+	GasPrice        uint64
 }
 
 type P2PNodeConfig struct {
@@ -188,6 +191,7 @@ func NewOntologyConfig() *OntologyConfig {
 			EnableConsensus: DEFAULT_ENABLE_CONSENSUS,
 			DisableEventLog: DEFAULT_DISABLE_EVENT_LOG,
 			SystemFee:       make(map[string]int64),
+			GasLimit:        DEFAULT_GAS_LIMIT,
 		},
 		P2PNode: &P2PNodeConfig{
 			NodePort:          DEFAULT_NODE_PORT,

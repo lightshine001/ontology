@@ -19,20 +19,15 @@
 package types
 
 import (
-	//"github.com/ontio/ontology/common"
+	"github.com/ontio/ontology/common"
 	"net"
-	"time"
 )
 
 const (
-	BUCKET_NUM        = NODE_ID_BITS
-	BUCKET_SIZE       = 2
-	FACTOR            = 3
-	MSG_CACHE         = 10240
-	PING_TIMEOUT      = 10 * time.Second
-	FIND_NODE_TIMEOUT = 60 * time.Second
-	DEFAULT_TIMEOUT   = 10 * time.Second
-	REFRESH_INTERVAL  = 1 * time.Hour
+	BUCKET_NUM  = 256
+	BUCKET_SIZE = 8
+	FACTOR      = 3
+	MSG_CACHE   = 10240
 )
 
 type ptype uint8
@@ -45,25 +40,14 @@ const (
 )
 
 type DHTMessage struct {
-	From    *net.UDPAddr
-	Payload []byte
+	from    *net.UDPAddr
+	payload []byte
 }
 
 type Node struct {
-	ID      NodeID `json:"node_id"`
-	IP      string `json:"IP"`
-	UDPPort uint16 `json:UDPPort`
-	TCPPort uint16 `json:TCPPort`
-}
-
-type feedType uint8
-
-const (
-	Add feedType = iota
-	Del
-)
-
-type FeedEvent struct {
-	EvtType feedType
-	Event   interface{}
+	ID      NodeID
+	Hash    common.Uint256
+	IP      string
+	UDPPort uint16
+	TCPPort uint16
 }

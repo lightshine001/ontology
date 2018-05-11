@@ -33,12 +33,16 @@ import (
 	"github.com/ontio/ontology/p2pserver/dht/types"
 	"github.com/ontio/ontology/p2pserver/message/msg_pack"
 	mt "github.com/ontio/ontology/p2pserver/message/types"
+<<<<<<< HEAD
 	"strconv"
+=======
+>>>>>>> add msg pack for ping/pong, findnode/neighbors
 )
 
 // DHT manage the DHT/Kad protocol resource, mainly including
 // route table, the channel to netserver, the udp message queue
 type DHT struct {
+<<<<<<< HEAD
 	mu           sync.Mutex
 	version      uint16                 // Local DHT version
 	nodeID       types.NodeID           // Local DHT id
@@ -79,6 +83,17 @@ func NewDHT(id types.NodeID, seeds []*types.Node) *DHT {
 func (this *DHT) SetPort(tcpPort uint16, udpPort uint16) {
 	this.tcpPort = tcpPort
 	this.udpPort = udpPort
+=======
+	version      uint32
+	nodeID       types.NodeID
+	mu           sync.Mutex
+	routingTable *routingTable
+	addr         string
+	port         uint16
+	conn         *net.UDPConn
+	recvCh       chan *DHTMessage
+	stopCh       chan struct{}
+>>>>>>> add msg pack for ping/pong, findnode/neighbors
 }
 
 // init initializes an instance of DHT
@@ -291,6 +306,7 @@ func (this *DHT) findNode(remotePeer *types.Node, targetID types.NodeID) error {
 	return nil
 }
 
+<<<<<<< HEAD
 // addNode adds a node to the K bucket.
 // remotePeer: added node
 // shouldWait: if ping the lastNode located in the same k bucket of remotePeer, the request should be wait or not
@@ -347,12 +363,52 @@ func (this *DHT) ping(addr *net.UDPAddr) error {
 
 // pong reply remote node when receiving ping
 func (this *DHT) pong(addr *net.UDPAddr) error {
+=======
+func (this *DHT) Ping(addr *net.UDPAddr) error {
+	pingPayload := mt.DHTPingPayload{
+		Version:  this.version,
+		srcPort:  this.port,
+		DestPort: addr.Port,
+	}
 
 	ip := net.ParseIP(this.addr).To16()
 	if ip == nil {
 		log.Error("Parse IP address error\n", this.addr)
 		return errors.New("Parse IP address error")
 	}
+	copy(pingPayload.SrcAddr[:], ip[:16])
+
+	ip = addr.IP.To4()
+	if ip == nil {
+		ip = addr.IP.To16()
+	}
+	copy(pingPayload.DestAddr[:], ip[:16])
+
+	copy(pingPayload.FromID[:], this.nodeID[:])
+
+	pingPacket, err := msgpack.NewDHTPing(pingPayload)
+	if err != nil {
+		log.Error("failed to new dht ping packet", err)
+		return err
+	}
+	this.send(addr, pingPacket)
+	return nil
+}
+
+func (this *DHT) Pong(addr *net.UDPAddr) error {
+	PongPayload := mt.DHTPongPayload{
+		Version:  this.version,
+		srcPort:  this.port,
+		DestPort: addr.Port,
+	}
+>>>>>>> add msg pack for ping/pong, findnode/neighbors
+
+	ip := net.ParseIP(this.addr).To16()
+	if ip == nil {
+		log.Error("Parse IP address error\n", this.addr)
+		return errors.New("Parse IP address error")
+	}
+<<<<<<< HEAD
 
 	pongMsg := msgpack.NewDHTPong(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
 	bf := new(bytes.Buffer)
@@ -371,11 +427,30 @@ func (this *DHT) findNodeReply(addr *net.UDPAddr, targetId types.NodeID) error {
 	mt.WriteMessage(bf, neighborsMsg)
 	this.send(addr, bf.Bytes())
 
+=======
+	copy(PongPayload.SrcAddr[:], ip[:16])
+
+	ip = addr.IP.To4()
+	if ip == nil {
+		ip = addr.IP.To16()
+	}
+	copy(PongPayload.DestAddr[:], ip[:16])
+
+	copy(PongPayload.FromID[:], this.nodeID[:])
+
+	pongPacket, err := msgpack.NewDHTPong(PongPayload)
+	if err != nil {
+		log.Error("failed to new dht pong packet", err)
+		return err
+	}
+	this.send(addr, pongPacket)
+>>>>>>> add msg pack for ping/pong, findnode/neighbors
 	return nil
 }
 
 // processPacket invokes the related handler to process the packet
 func (this *DHT) processPacket(from *net.UDPAddr, packet []byte) {
+<<<<<<< HEAD
 	msg, err := mt.ReadMessage(bytes.NewBuffer(packet))
 	if err != nil {
 		log.Info("receive dht message error:", err)
@@ -395,6 +470,16 @@ func (this *DHT) processPacket(from *net.UDPAddr, packet []byte) {
 	default:
 		log.Infof("processPacket: unknown msg %s", msgType)
 	}
+=======
+	// Todo: add processPacket implementation
+	msgType, err := mt.MsgType(packet)
+	if err != nil {
+		log.Info("failed to get msg type")
+		return
+	}
+
+	log.Trace("Recv UDP msg", msgType)
+>>>>>>> add msg pack for ping/pong, findnode/neighbors
 }
 
 // recvUDPMsg waits for the udp msg and puts it to the msg queue

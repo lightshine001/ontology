@@ -21,6 +21,10 @@ package dht
 import (
 	"sync"
 
+<<<<<<< HEAD
+=======
+	"github.com/ontio/ontology/common"
+>>>>>>> add msg pack for ping/pong, findnode/neighbors
 	"github.com/ontio/ontology/p2pserver/dht/types"
 )
 
@@ -35,6 +39,7 @@ type routingTable struct {
 	feedCh  chan *types.FeedEvent
 }
 
+<<<<<<< HEAD
 func (this *routingTable) init(id types.NodeID, ch chan *types.FeedEvent) {
 	this.buckets = make([]*bucket, types.BUCKET_NUM)
 	for i := range this.buckets {
@@ -43,11 +48,16 @@ func (this *routingTable) init(id types.NodeID, ch chan *types.FeedEvent) {
 		}
 	}
 
+=======
+func (this *routingTable) init(id types.NodeID) {
+	this.buckets = make([]*bucket, BUCKET_NUM)
+>>>>>>> add msg pack for ping/pong, findnode/neighbors
 	this.id = id
 	this.feedCh = ch
 }
 
 func (this *routingTable) locateBucket(id types.NodeID) (int, *bucket) {
+<<<<<<< HEAD
 	dist := logdist(this.id, id)
 	if dist == 0 {
 		return 0, this.buckets[0]
@@ -69,6 +79,15 @@ func (this *routingTable) queryNode(id types.NodeID) *types.Node {
 
 // add node to bucket, if bucket contains the node, move it to bucket head
 func (this *routingTable) addNode(node *types.Node, bucketIndex int) bool {
+=======
+	id1 := sha256.Sum256(this.id[:])
+	id2 := sha256.Sum256(id[:])
+	dist := logdist(id1, id2)
+	return dist, this.buckets[dist-1]
+}
+
+func (this *routingTable) AddNode(node *types.Node) bool {
+>>>>>>> add msg pack for ping/pong, findnode/neighbors
 	this.mu.Lock()
 	defer this.mu.Unlock()
 
@@ -99,7 +118,11 @@ func (this *routingTable) addNode(node *types.Node, bucketIndex int) bool {
 	return true
 }
 
+<<<<<<< HEAD
 func (this *routingTable) removeNode(id types.NodeID) {
+=======
+func (this *routingTable) RemoveNode(id types.NodeID) {
+>>>>>>> add msg pack for ping/pong, findnode/neighbors
 	this.mu.Lock()
 	defer this.mu.Unlock()
 	_, bucket := this.locateBucket(id)
@@ -124,10 +147,17 @@ func (this *routingTable) removeNode(id types.NodeID) {
 	}
 }
 
+<<<<<<< HEAD
 func (this *routingTable) getClosestNodes(num int, targetID types.NodeID) []*types.Node {
 	this.mu.RLock()
 	defer this.mu.RUnlock()
 	closestList := make([]*types.Node, 0, num)
+=======
+func (this *routingTable) GetClosestNodes(num int, targetID types.NodeID) []*Node {
+	this.mu.Lock()
+	defer this.mu.Unlock()
+	closestList := make([]*Node, 0, num)
+>>>>>>> add msg pack for ping/pong, findnode/neighbors
 
 	index, _ := this.locateBucket(targetID)
 	buckets := []int{index}
@@ -167,6 +197,7 @@ func (this *routingTable) getTotalNodeNumInBukcet(bucket int) int {
 	return len(b.entries)
 }
 
+<<<<<<< HEAD
 func (this *routingTable) getLastNodeInBucket(bucket int) *types.Node {
 	this.mu.RLock()
 	defer this.mu.RUnlock()
@@ -180,6 +211,12 @@ func (this *routingTable) getLastNodeInBucket(bucket int) *types.Node {
 
 func (this *routingTable) getDistance(id1, id2 types.NodeID) int {
 	dist := logdist(id1, id2)
+=======
+func (this *routingTable) GetDistance(id1, id2 types.NodeID) int {
+	sha1 := sha256.Sum256(id1[:])
+	sha2 := sha256.Sum256(id2[:])
+	dist := logdist(sha1, sha2)
+>>>>>>> add msg pack for ping/pong, findnode/neighbors
 	return dist
 }
 
@@ -193,9 +230,15 @@ func (this *routingTable) totalNodes() int {
 	return num
 }
 
+<<<<<<< HEAD
 func (this *routingTable) isNodeInBucket(id types.NodeID, bucket int) (*types.Node, bool) {
 	this.mu.RLock()
 	defer this.mu.RUnlock()
+=======
+func (this *routingTable) isNodeInBucket(id types.NodeID, bucket int) bool {
+	this.mu.Lock()
+	defer this.mu.Unlock()
+>>>>>>> add msg pack for ping/pong, findnode/neighbors
 
 	b := this.buckets[bucket]
 	if b == nil {

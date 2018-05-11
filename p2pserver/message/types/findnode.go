@@ -24,10 +24,21 @@ import (
 	"errors"
 
 	"github.com/ontio/ontology/common/log"
+<<<<<<< HEAD
 	"github.com/ontio/ontology/p2pserver/common"
 	"github.com/ontio/ontology/p2pserver/dht/types"
 )
 
+=======
+	"github.com/ontio/ontology/p2pserver/dht/types"
+)
+
+type FindNodePayload struct {
+	FromID   types.NodeID
+	TargetID uint64
+}
+
+>>>>>>> add msg pack for ping/pong, findnode/neighbors
 type FindNode struct {
 	FromID   types.NodeID
 	TargetID types.NodeID

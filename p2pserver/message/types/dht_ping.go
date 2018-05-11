@@ -21,6 +21,7 @@ package types
 import (
 	"bytes"
 	"github.com/ontio/ontology/common/log"
+<<<<<<< HEAD
 	"github.com/ontio/ontology/common/serialization"
 	"github.com/ontio/ontology/p2pserver/common"
 	"github.com/ontio/ontology/p2pserver/dht/types"
@@ -30,6 +31,18 @@ type EndPoint struct {
 	Addr    [16]byte
 	UDPPort uint16
 	TCPPort uint16
+=======
+	"github.com/ontio/ontology/p2pserver/dht/types"
+)
+
+type DHTPingPayload struct {
+	Version  uint16
+	FromID   types.NodeID
+	SrcAddr  [16]byte
+	SrcPort  uint16
+	DestAddr [16]byte
+	DestPort uint16
+>>>>>>> add msg pack for ping/pong, findnode/neighbors
 }
 
 type DHTPing struct {

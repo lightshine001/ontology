@@ -270,7 +270,6 @@ func (this *DHT) Ping(addr *net.UDPAddr) error {
 	copy(pingPayload.DestAddr[:], ip[:16])
 
 	copy(pingPayload.FromID[:], this.nodeID[:])
-
 	pingPacket, err := msgpack.NewDHTPing(pingPayload)
 	if err != nil {
 		log.Error("failed to new dht ping packet", err)
@@ -378,7 +377,6 @@ func (this *DHT) recvUDPMsg() {
 			log.Error("ReadFromUDP error:", err)
 			return
 		}
-		//this.processPacket(from, buf[:nbytes])
 		// Todo:
 		pk := &DHTMessage{
 			from:    from,

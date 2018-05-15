@@ -35,7 +35,7 @@ import (
 
 type FindNodePayload struct {
 	FromID   types.NodeID
-	TargetID uint64
+	TargetID types.NodeID
 }
 
 >>>>>>> add msg pack for ping/pong, findnode/neighbors

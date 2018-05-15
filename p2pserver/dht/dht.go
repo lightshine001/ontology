@@ -101,6 +101,8 @@ func (this *DHT) SetPort(tcpPort uint16, udpPort uint16) {
 	addr         string
 	port         uint16
 	conn         *net.UDPConn
+	pingNodeQueue *types.PingNodeQueue
+	findNodeQueue *types.PingNodeQueue
 	recvCh       chan *types.DHTMessage
 	stopCh       chan struct{}
 >>>>>>> add msg pack for ping/pong, findnode/neighbors
@@ -119,13 +121,20 @@ func NewDHT() *DHT {
 func (this *DHT) init() {
 	this.recvCh = make(chan *types.DHTMessage, types.MSG_CACHE)
 	this.stopCh = make(chan struct{})
+<<<<<<< HEAD
 	this.messagePool = types.NewRequestPool(this.onRequestTimeOut)
 	this.feedCh = make(chan *types.FeedEvent, types.MSG_CACHE)
 	this.routingTable.init(this.nodeID, this.feedCh)
+=======
+	this.pingNodeQueue = types.NewPingNodeQueue(this.onPingTimeOut)
+	//this.findNodeQueue = types.NewPingNodeQueue()
+	this.routingTable.init(this.nodeID)
+>>>>>>> add ping pong handler;
 }
 
 // Start starts DHT service
 func (this *DHT) Start() {
+<<<<<<< HEAD
 	go this.loop()
 
 	err := this.listenUDP(":" + strconv.Itoa(int(this.udpPort)))
@@ -133,6 +142,18 @@ func (this *DHT) Start() {
 		log.Errorf("listen udp failed.")
 	}
 	this.bootstrap()
+=======
+	// generate seed peer node
+	seedNode := new(types.Node)
+	// add peer node to routing table
+	this.AddNode(seedNode)
+	// lookup self
+	results := this.lookup(this.nodeID)
+	// add results to routing table
+	for _, node := range results{
+		this.AddNode(node)
+	}
+>>>>>>> add ping pong handler;
 }
 
 // Stop stops DHT service
@@ -256,7 +277,16 @@ func (this *DHT) lookup(targetID types.NodeID) []*types.Node {
 		return nil
 	}
 
+<<<<<<< HEAD
 >>>>>>> Implement lookup function
+=======
+	for _, node := range closestNodes{
+		if node.ID == targetID{
+			return closestNodes
+		}
+	}
+
+>>>>>>> add ping pong handler;
 	for {
 		for i := 0; i < len(closestNodes) && pendingQueries < types.FACTOR; i++ {
 			node := closestNodes[i]
@@ -365,7 +395,22 @@ func (this *DHT) waitAndHandleResponse(knownNode map[types.NodeID]bool, closestN
 }
 
 func (this *DHT) FindNode(remotePeer *types.Node, targetID types.NodeID) ([]*types.Node, error) {
+	addr, err := getNodeUdpAddr(remotePeer)
+	if err != nil {
+		return nil, err
+	}
+	findNodePayload := mt.FindNodePayload{
+		FromID:   this.nodeID,
+		TargetID: targetID,
+	}
+	findNodePacket, err := msgpack.NewFindNode(findNodePayload)
+	if err != nil {
+		log.Error("failed to new dht find node packet", err)
+		return nil, err
+	}
+	this.send(addr, findNodePacket)
 	return nil, nil
+<<<<<<< HEAD
 >>>>>>> Implement lookup function
 
 }
@@ -411,10 +456,18 @@ func (this *DHT) addNode(remotePeer *types.Node) {
 
 	// find node in own bucket
 	bucketIndex, _ := this.routingTable.locateBucket(remotePeer.ID)
+=======
+}
+
+func (this *DHT) AddNode(remotePeer *types.Node) {
+	// find node in own bucket
+	bucketIndex, bucket := this.routingTable.locateBucket(remotePeer.ID)
+>>>>>>> add ping pong handler;
 	remoteNode, isInBucket := this.routingTable.isNodeInBucket(remotePeer.ID, bucketIndex)
 	// update peer info in local bucket
 	remoteNode = remotePeer
 	if isInBucket {
+<<<<<<< HEAD
 		this.routingTable.addNode(remoteNode, bucketIndex)
 	} else {
 		bucketNodeNum := this.routingTable.getTotalNodeNumInBukcet(bucketIndex)
@@ -453,6 +506,24 @@ func (this *DHT) ping(addr *net.UDPAddr) error {
 	}
 	this.send(addr, bf.Bytes())
 	return nil
+=======
+		this.routingTable.AddNode(remoteNode)
+	} else {
+		bucketNodeNum := len(bucket.entries)
+		if bucketNodeNum < types.BUCKET_SIZE { // bucket is not full
+			this.routingTable.AddNode(remoteNode)
+		} else {
+			lastNode := bucket.entries[bucketNodeNum-1]
+			addr, err := getNodeUdpAddr(lastNode)
+			if err != nil{
+				this.routingTable.AddNode(lastNode)
+				return
+			}
+			this.pingNodeQueue.AddNode(lastNode, remoteNode, types.PING_TIMEOUT)
+			this.Ping(addr)
+		}
+	}
+>>>>>>> add ping pong handler;
 }
 
 // pong reply remote node when receiving ping
@@ -487,6 +558,16 @@ func (this *DHT) Ping(addr *net.UDPAddr) error {
 	}
 	this.send(addr, pingPacket)
 	return nil
+}
+
+func (this *DHT)onPingTimeOut(nodeId types.NodeID){
+	pendingNode, ok := this.pingNodeQueue.GetPendingNode(nodeId)
+	if ok && pendingNode != nil{
+		// add pending node to bucket
+		this.routingTable.AddNode(pendingNode)
+		// clear ping node queue
+		this.pingNodeQueue.DeleteNode(nodeId)
+	}
 }
 
 func (this *DHT) Pong(addr *net.UDPAddr) error {
@@ -627,7 +708,11 @@ func (this *DHT) send(addr *net.UDPAddr, msg []byte) error {
 	return nil
 }
 
+<<<<<<< HEAD
 func getNodeUDPAddr(node *types.Node) (*net.UDPAddr, error) {
+=======
+func getNodeUdpAddr(node *types.Node) (*net.UDPAddr, error) {
+>>>>>>> add ping pong handler;
 	addr := new(net.UDPAddr)
 	addr.IP = net.ParseIP(node.IP).To16()
 	if addr.IP == nil {
@@ -637,6 +722,7 @@ func getNodeUDPAddr(node *types.Node) (*net.UDPAddr, error) {
 	addr.Port = int(node.UDPPort)
 	return addr, nil
 }
+<<<<<<< HEAD
 
 func (this *DHT) DisplayRoutingTable() {
 	for bucketIndex, bucket := range this.routingTable.buckets {
@@ -650,3 +736,5 @@ func (this *DHT) DisplayRoutingTable() {
 		}
 	}
 }
+=======
+>>>>>>> add ping pong handler;

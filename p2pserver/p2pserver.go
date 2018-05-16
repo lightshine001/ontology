@@ -37,6 +37,7 @@ import (
 	"github.com/ontio/ontology/core/types"
 	actor "github.com/ontio/ontology/p2pserver/actor/req"
 	"github.com/ontio/ontology/p2pserver/common"
+	"github.com/ontio/ontology/p2pserver/dht"
 	"github.com/ontio/ontology/p2pserver/message/msg_pack"
 	msgtypes "github.com/ontio/ontology/p2pserver/message/types"
 	"github.com/ontio/ontology/p2pserver/message/utils"
@@ -54,6 +55,7 @@ type P2PServer struct {
 	ReconnectAddrs
 	quitOnline    chan bool
 	quitHeartBeat chan bool
+	dht           *dht.DHT
 	//quitSyncBlk   chan bool
 	//isSync        bool
 }
@@ -71,6 +73,7 @@ func NewServer(acc *account.Account) (*P2PServer, error) {
 	p := &P2PServer{
 		network: n,
 	}
+	p.dht = dht.NewDHT()
 
 	p.msgRouter = utils.NewMsgRouter(p.network)
 	p.blockSync = NewBlockSyncMgr(p)

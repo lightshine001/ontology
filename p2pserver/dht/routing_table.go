@@ -33,7 +33,11 @@ type bucket struct {
 }
 
 type routingTable struct {
+<<<<<<< HEAD
 	mu      sync.RWMutex
+=======
+	mu      sync.Mutex
+>>>>>>> Fix compile issue
 	id      types.NodeID
 	buckets []*bucket
 	feedCh  chan *types.FeedEvent
@@ -50,8 +54,12 @@ func (this *routingTable) init(id types.NodeID, ch chan *types.FeedEvent) {
 
 =======
 func (this *routingTable) init(id types.NodeID) {
+<<<<<<< HEAD
 	this.buckets = make([]*bucket, BUCKET_NUM)
 >>>>>>> add msg pack for ping/pong, findnode/neighbors
+=======
+	this.buckets = make([]*bucket, types.BUCKET_NUM)
+>>>>>>> Fix compile issue
 	this.id = id
 	this.feedCh = ch
 }
@@ -148,6 +156,7 @@ func (this *routingTable) RemoveNode(id types.NodeID) {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 func (this *routingTable) getClosestNodes(num int, targetID types.NodeID) []*types.Node {
 	this.mu.RLock()
 	defer this.mu.RUnlock()
@@ -158,6 +167,12 @@ func (this *routingTable) GetClosestNodes(num int, targetID types.NodeID) []*Nod
 	defer this.mu.Unlock()
 	closestList := make([]*Node, 0, num)
 >>>>>>> add msg pack for ping/pong, findnode/neighbors
+=======
+func (this *routingTable) GetClosestNodes(num int, targetID types.NodeID) []*types.Node {
+	this.mu.Lock()
+	defer this.mu.Unlock()
+	closestList := make([]*types.Node, 0, num)
+>>>>>>> Fix compile issue
 
 	index, _ := this.locateBucket(targetID)
 	buckets := []int{index}

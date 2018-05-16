@@ -44,7 +44,6 @@ func (this *routingTable) init(id types.NodeID) {
 			entries: make([]*types.Node, 0, types.BUCKET_SIZE),
 		}
 	}
-
 	this.id = id
 }
 

@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sort"
 	"sync"
 	"time"
 
@@ -194,8 +195,11 @@ func (this *DHT) refreshRoutingTable() {
 	this.lookup(targetID)
 }
 
+<<<<<<< HEAD
 // lookup executes a network search for nodes closest to the given
 // target and setup k bucket
+=======
+>>>>>>> Implement lookup function
 func (this *DHT) lookup(targetID types.NodeID) []*types.Node {
 	bucket, _ := this.routingTable.locateBucket(targetID)
 	node, ret := this.routingTable.isNodeInBucket(targetID, bucket)
@@ -204,6 +208,7 @@ func (this *DHT) lookup(targetID types.NodeID) []*types.Node {
 		return []*types.Node{node}
 	}
 
+<<<<<<< HEAD
 	closestNodes := this.routingTable.getClosestNodes(types.BUCKET_SIZE, targetID)
 	if len(closestNodes) == 0 {
 		return nil
@@ -215,6 +220,21 @@ func (this *DHT) lookup(targetID types.NodeID) []*types.Node {
 
 	visited[this.nodeID] = true
 
+=======
+	visited := make(map[types.NodeID]bool)
+	knownNode := make(map[types.NodeID]bool)
+	responseCh := make(chan []*types.Node, types.FACTOR)
+	pendingQueries = 0
+
+	visited[this.nodeID] = true
+
+	closestNodes := this.routingTable.GetClosestNodes(types.BUCKET_SIZE, targetID)
+
+	if len(result) == 0 {
+		return nil
+	}
+
+>>>>>>> Implement lookup function
 	for {
 		for i := 0; i < len(closestNodes) && pendingQueries < types.FACTOR; i++ {
 			node := closestNodes[i]
@@ -224,6 +244,7 @@ func (this *DHT) lookup(targetID types.NodeID) []*types.Node {
 			visited[node.ID] = true
 			pendingQueries++
 			go func() {
+<<<<<<< HEAD
 				this.findNode(node, targetID)
 				this.messagePool.AddRequest(node, types.DHT_FIND_NODE_REQUEST, nil, false)
 			}()
@@ -273,6 +294,57 @@ func (this *DHT) waitAndHandleResponse(knownNode map[types.NodeID]bool, closestN
 			}
 		}
 	}
+=======
+				ret, _ := this.FindNode(node, targetID)
+				responseCh <- ret
+			}()
+		}
+
+		if pendingQueries == 0 {
+			break
+		}
+
+		select {
+		case entries, ok := <-responseCh:
+			if ok {
+				for _, n := range entries {
+					log.Info("receive new node", n)
+					// Todo:
+					if knownNode[n.ID] == true {
+						continue
+					}
+					knownNode[n.ID] = true
+					idx := sort.Search(len(closestNodes), func(i int) bool {
+						for j := range targetID {
+							da := closestNodes[i].ID[j] ^ targetID[j]
+							db := m.ID[j] ^ targetID[j]
+							if da > db {
+								return true
+							} else if da < db {
+								return false
+							}
+						}
+						return false
+					})
+					if len(closestNodes) < types.BUCKET_SIZE {
+						cloestNodes = append(closestNodes, n)
+					}
+					if idx < len(closestNodes) {
+						copy(closestNodes[idx+1:], closestNodes[idx:])
+						closestNodes[idx] = n
+					}
+				}
+			}
+		}
+
+		pendingQueries--
+	}
+	return cloestNodes
+}
+
+func (this *DHT) FindNode(remotePeer, targetID uint64) ([]*types.Node, error) {
+	return nil, nil
+>>>>>>> Implement lookup function
 
 }
 

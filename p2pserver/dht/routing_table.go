@@ -231,11 +231,15 @@ func (this *routingTable) totalNodes() int {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 func (this *routingTable) isNodeInBucket(id types.NodeID, bucket int) (*types.Node, bool) {
 	this.mu.RLock()
 	defer this.mu.RUnlock()
 =======
 func (this *routingTable) isNodeInBucket(id types.NodeID, bucket int) bool {
+=======
+func (this *routingTable) isNodeInBucket(id types.NodeID, bucket int) (*types.Node, bool) {
+>>>>>>> Implement lookup function
 	this.mu.Lock()
 	defer this.mu.Unlock()
 >>>>>>> add msg pack for ping/pong, findnode/neighbors

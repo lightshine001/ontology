@@ -187,17 +187,11 @@ func (this *DHT) PingHandler(fromAddr *net.UDPAddr, pingMsgData []byte) {
 	this.Pong(fromAddr)
 	// add this node to bucket
 	fromNodeId := pingMsg.P.FromID
-	var fromNode *types.Node
-	// lookup from node
-	lookupResult := this.lookup(fromNodeId)
-	for _, node := range lookupResult {
-		if fromNodeId == node.ID {
-			fromNode = node
-			break
-		}
+	fromNode := this.routingTable.queryNode(fromNodeId)
+	if fromNode != nil {
+		// add node to bucket
+		this.AddNode(fromNode)
 	}
-	// add node to bucket
-	this.AddNode(fromNode)
 }
 
 func (this *DHT) PongHandler(fromAddr *net.UDPAddr, pongMsgData []byte) {
@@ -214,9 +208,13 @@ func (this *DHT) PongHandler(fromAddr *net.UDPAddr, pongMsgData []byte) {
 		// remove node from ping node queue
 		this.pingNodeQueue.DeleteNode(fromNodeId)
 	}
+<<<<<<< HEAD
 }
 
 func addPingNode() {
 
 >>>>>>> add ping pong handler;
 }
+=======
+}
+>>>>>>> fix a bug on ping time out; fix ping handle bug

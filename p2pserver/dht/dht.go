@@ -135,6 +135,7 @@ func (this *DHT) init() {
 // Start starts DHT service
 func (this *DHT) Start() {
 <<<<<<< HEAD
+<<<<<<< HEAD
 	go this.loop()
 
 	err := this.listenUDP(":" + strconv.Itoa(int(this.udpPort)))
@@ -154,6 +155,18 @@ func (this *DHT) Start() {
 		this.AddNode(node)
 	}
 >>>>>>> add ping pong handler;
+=======
+	//// generate seed peer node
+	//seedNode := new(types.Node)
+	//// add peer node to routing table
+	//this.AddNode(seedNode)
+	//// lookup self
+	//results := this.lookup(this.nodeID)
+	//// add results to routing table
+	//for _, node := range results{
+	//	this.AddNode(node)
+	//}
+>>>>>>> fix a bug on ping time out; fix ping handle bug
 }
 
 // Stop stops DHT service
@@ -516,7 +529,8 @@ func (this *DHT) ping(addr *net.UDPAddr) error {
 			lastNode := bucket.entries[bucketNodeNum-1]
 			addr, err := getNodeUdpAddr(lastNode)
 			if err != nil{
-				this.routingTable.AddNode(lastNode)
+				this.routingTable.RemoveNode(lastNode.ID)
+				this.routingTable.AddNode(remoteNode)
 				return
 			}
 			this.pingNodeQueue.AddNode(lastNode, remoteNode, types.PING_TIMEOUT)
@@ -561,13 +575,15 @@ func (this *DHT) Ping(addr *net.UDPAddr) error {
 }
 
 func (this *DHT)onPingTimeOut(nodeId types.NodeID){
+	// remove the node from bucket
+	this.routingTable.RemoveNode(nodeId)
 	pendingNode, ok := this.pingNodeQueue.GetPendingNode(nodeId)
 	if ok && pendingNode != nil{
 		// add pending node to bucket
 		this.routingTable.AddNode(pendingNode)
-		// clear ping node queue
-		this.pingNodeQueue.DeleteNode(nodeId)
 	}
+	// clear ping node queue
+	this.pingNodeQueue.DeleteNode(nodeId)
 }
 
 func (this *DHT) Pong(addr *net.UDPAddr) error {

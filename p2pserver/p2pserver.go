@@ -88,7 +88,7 @@ func NewServer() *P2PServer {
 		network: n,
 		ledger:  ledger.DefLedger,
 	}
-	p.dht = dht.NewDHT()
+	//p.dht = dht.NewDHT()
 
 	nodeID, _ := dt.PubkeyID(acc.PublicKey)
 	seeds := loadSeeds()

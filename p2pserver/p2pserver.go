@@ -75,7 +75,7 @@ func NewServer(acc *account.Account) *P2PServer {
 		network: n,
 		ledger:  ledger.DefLedger,
 	}
-	p.dht = dht.NewDHT()
+	//p.dht = dht.NewDHT()
 
 	p.msgRouter = utils.NewMsgRouter(p.network)
 	p.blockSync = NewBlockSyncMgr(p)

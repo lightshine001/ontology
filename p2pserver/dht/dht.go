@@ -66,12 +66,6 @@ func NewDHT(node types.NodeID, seeds []*types.Node) *DHT {
 	return dht
 }
 
-func NewDHT() *DHT {
-	dht := &DHT{}
-	dht.init()
-	return dht
-}
-
 func (this *DHT) init() {
 	this.recvCh = make(chan *types.DHTMessage, types.MSG_CACHE)
 	this.stopCh = make(chan struct{})

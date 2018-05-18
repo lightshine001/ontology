@@ -118,7 +118,6 @@ func (this *DHT) bootstrap() {
 	this.syncAddNodes(this.seeds)
 	this.DisplayRoutingTable()
 
-	log.Info("start lookup")
 	this.lookup(this.nodeID)
 }
 

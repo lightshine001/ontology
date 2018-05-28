@@ -136,6 +136,6 @@ func (this *Neighbors) Deserialization(p []byte) error {
 		}
 		this.P.Nodes = append(this.P.Nodes, *node)
 	}
-
+	copy(this.P.FromID[:], id)
 	return nil
 }

@@ -51,7 +51,6 @@ func main() {
 	//seedIndex, _ := strconv.Atoi(os.Args[1])
 	////seedIndex := 3
 	//startSeedNode(seedIndex, seeds)
-
 	//start common node
 	nodeID, _ := types.PubkeyID(acct.PublicKey)
 	//commonNode := &types.Node{

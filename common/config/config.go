@@ -83,6 +83,69 @@ var PolarisConfig = &GenesisConfig{
 	SOLO: &SOLOConfig{},
 }
 
+type DHTNode struct {
+	PubKey  string `json:"PubKey"`
+	IP      string `json:"IP"`
+	UDPPort uint16 `json:"UDPPort"`
+	TCPPort uint16 `json:"TCPPort"`
+}
+
+type Configuration struct {
+	Magic               int64            `json:"Magic"`
+	Version             int              `json:"Version"`
+	SeedList            []string         `json:"SeedList"`
+	Bookkeepers         []string         `json:"Bookkeepers"` // The default book keepers' publickey
+	DHTSeeds            []DHTNode        `json:"DHTSeeds"`
+	HttpRestPort        int              `json:"HttpRestPort"`
+	HttpCertPath        string           `json:"HttpCertPath"`
+	HttpKeyPath         string           `json:"HttpKeyPath"`
+	HttpInfoPort        uint16           `json:"HttpInfoPort"`
+	HttpWsPort          int              `json:"HttpWsPort"`
+	HttpJsonPort        int              `json:"HttpJsonPort"`
+	HttpLocalPort       int              `json:"HttpLocalPort"`
+	NodePort            uint16           `json:"NodePort"`
+	NodeConsensusPort   uint16           `json:"NodeConsensusPort"`
+	DualPortSurpport    bool             `json:"DualPortSurpport"`
+	DHTUDPPort          uint16           `json:"DHTUDPPort"`
+	NodeType            string           `json:"NodeType"`
+	PrintLevel          int              `json:"PrintLevel"`
+	IsTLS               bool             `json:"IsTLS"`
+	CertPath            string           `json:"CertPath"`
+	KeyPath             string           `json:"KeyPath"`
+	CAPath              string           `json:"CAPath"`
+	GenBlockTime        uint             `json:"GenBlockTime"`
+	MultiCoreNum        uint             `json:"MultiCoreNum"`
+	MaxLogSize          int64            `json:"MaxLogSize"`
+	MaxTxInBlock        int              `json:"MaxTransactionInBlock"`
+	MaxHdrSyncReqs      int              `json:"MaxConcurrentSyncHeaderReqs"`
+	ConsensusType       string           `json:"ConsensusType"`
+	ConsensusConfigPath string           `json:"ConsensusConfigPath"`
+	SystemFee           map[string]int64 `json:"SystemFee"`
+}
+
+type configFile struct {
+	ConfigFile Configuration `json:"Configuration"`
+}
+
+func newDefaultConfig() *Configuration {
+	return &Configuration{
+		Magic:             12345,
+		Version:           0,
+		HttpRestPort:      20334,
+		HttpWsPort:        20335,
+		HttpJsonPort:      20336,
+		HttpLocalPort:     20337,
+		NodePort:          20338,
+		NodeConsensusPort: 20339,
+		PrintLevel:        1,
+		GenBlockTime:      6,
+		MultiCoreNum:      4,
+		MaxTxInBlock:      5000,
+		ConsensusType:     "solo",
+		SystemFee:         make(map[string]int64),
+	}
+}
+
 var DefConfig = NewOntologyConfig()
 
 type GenesisConfig struct {

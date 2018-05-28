@@ -23,22 +23,11 @@ import (
 	//"errors"
 
 	"github.com/ontio/ontology/common/log"
-<<<<<<< HEAD
 	"github.com/ontio/ontology/common/serialization"
 	"github.com/ontio/ontology/p2pserver/common"
 	"github.com/ontio/ontology/p2pserver/dht/types"
 )
 
-=======
-	"github.com/ontio/ontology/p2pserver/dht/types"
-)
-
-type NeighborsPayload struct {
-	FromID types.NodeID
-	Nodes  []types.Node
-}
-
->>>>>>> add msg pack for ping/pong, findnode/neighbors
 type Neighbors struct {
 	FromID types.NodeID
 	Nodes  []types.Node

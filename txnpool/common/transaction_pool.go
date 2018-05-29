@@ -20,7 +20,7 @@
 package common
 
 import (
-	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/ontio/ontology/common"
@@ -39,7 +39,6 @@ type TXAttr struct {
 
 type TXEntry struct {
 	Tx    *types.Transaction // transaction which has been verified
-	Fee   common.Fixed64     // Total fee per transaction
 	Attrs []*TXAttr          // the result from each validator
 }
 
@@ -68,7 +67,8 @@ func (tp *TXPool) AddTxList(txEntry *TXEntry) bool {
 	defer tp.Unlock()
 	txHash := txEntry.Tx.Hash()
 	if _, ok := tp.txList[txHash]; ok {
-		log.Info("Transaction %x already existed in the pool\n", txHash)
+		log.Infof("AddTxList: transaction %x is already in the pool",
+			txHash)
 		return false
 	}
 
@@ -83,18 +83,14 @@ func (tp *TXPool) CleanTransactionList(txs []*types.Transaction) error {
 	tp.Lock()
 	defer tp.Unlock()
 	for _, tx := range txs {
-		if tx.TxType == types.BookKeeping {
-			txsNum = txsNum - 1
-			continue
-		}
 		if _, ok := tp.txList[tx.Hash()]; ok {
 			delete(tp.txList, tx.Hash())
 			cleaned++
 		}
 	}
 
-	log.Debug(fmt.Sprintf("[cleanTransactionList],transaction %d Requested,%d cleaned, Remains %d in TxPool",
-		txsNum, cleaned, len(tp.txList)))
+	log.Debugf("CleanTransactionList: transaction %d requested,%d cleaned, remains %d in TxPool",
+		txsNum, cleaned, len(tp.txList))
 	return nil
 }
 
@@ -115,7 +111,7 @@ func (tp *TXPool) DelTxList(tx *types.Transaction) bool {
 // height, re-verify it.
 func (tp *TXPool) compareTxHeight(txEntry *TXEntry, height uint32) bool {
 	for _, v := range txEntry.Attrs {
-		if v.Type == vt.Statefull &&
+		if v.Type == vt.Stateful &&
 			v.Height < height {
 			return false
 		}
@@ -131,7 +127,13 @@ func (tp *TXPool) GetTxPool(byCount bool, height uint32) ([]*TXEntry,
 	tp.RLock()
 	defer tp.RUnlock()
 
-	count := config.Parameters.MaxTxInBlock
+	orderByFee := make([]*TXEntry, 0, len(tp.txList))
+	for _, txEntry := range tp.txList {
+		orderByFee = append(orderByFee, txEntry)
+	}
+	sort.Sort(OrderByNetWorkFee(orderByFee))
+
+	count := int(config.DefConfig.Consensus.MaxTxInBlock)
 	if count <= 0 {
 		byCount = false
 	}
@@ -142,7 +144,7 @@ func (tp *TXPool) GetTxPool(byCount bool, height uint32) ([]*TXEntry,
 	var num int
 	txList := make([]*TXEntry, 0, count)
 	oldTxList := make([]*types.Transaction, 0)
-	for _, txEntry := range tp.txList {
+	for _, txEntry := range orderByFee {
 		if !tp.compareTxHeight(txEntry, height) {
 			oldTxList = append(oldTxList, txEntry.Tx)
 			continue
@@ -218,7 +220,7 @@ func (tp *TXPool) GetUnverifiedTxs(txs []*types.Transaction,
 		}
 
 		for _, v := range txEntry.Attrs {
-			if v.Type == vt.Statefull {
+			if v.Type == vt.Stateful {
 				entry := &VerifyTxResult{
 					Tx:      tx,
 					Height:  v.Height,

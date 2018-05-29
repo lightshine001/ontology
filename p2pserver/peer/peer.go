@@ -29,7 +29,6 @@ import (
 
 	"github.com/ontio/ontology-crypto/keypair"
 	"github.com/ontio/ontology/common/log"
-	actor "github.com/ontio/ontology/p2pserver/actor/req"
 	"github.com/ontio/ontology/p2pserver/common"
 	conn "github.com/ontio/ontology/p2pserver/link"
 )
@@ -182,7 +181,7 @@ func (this *Peer) DumpInfo() {
 	log.Info("Node info:")
 	log.Info("\t syncState = ", this.syncState)
 	log.Info("\t consState = ", this.consState)
-	log.Info(fmt.Sprintf("\t id = 0x%x", this.GetID()))
+	log.Info("\t id = 0x%x", this.GetID())
 	log.Info("\t addr = ", this.SyncLink.GetAddr())
 	log.Info("\t cap = ", this.cap)
 	log.Info("\t version = ", this.GetVersion())
@@ -195,112 +194,72 @@ func (this *Peer) DumpInfo() {
 
 //SetBookKeeperAddr set pubKey to peer
 func (this *Peer) SetBookKeeperAddr(pubKey keypair.PublicKey) {
-	if this != nil {
-		this.base.SetPubKey(pubKey)
-	}
-
+	this.base.SetPubKey(pubKey)
 }
 
 //GetPubKey return publickey of peer
 func (this *Peer) GetPubKey() keypair.PublicKey {
-	if this != nil {
-		return this.base.GetPubKey()
-	}
-	return nil
+	return this.base.GetPubKey()
 }
 
 //GetVersion return peer`s version
 func (this *Peer) GetVersion() uint32 {
-	if this != nil {
-		return this.base.GetVersion()
-	}
-	return 0
+	return this.base.GetVersion()
 }
 
 //GetHeight return peer`s block height
 func (this *Peer) GetHeight() uint64 {
-	if this != nil {
-		return this.base.GetHeight()
-	}
-	return 0
+	return this.base.GetHeight()
 }
 
 //SetHeight set height to peer
 func (this *Peer) SetHeight(height uint64) {
-	if this != nil {
-		this.base.SetHeight(height)
-	}
+	this.base.SetHeight(height)
 }
 
 //GetConsConn return consensus link
 func (this *Peer) GetConsConn() *conn.Link {
-	if this != nil {
-		return this.ConsLink
-	}
-	return nil
+	return this.ConsLink
 }
 
 //SetConsConn set consensue link to peer
 func (this *Peer) SetConsConn(consLink *conn.Link) {
-	if this != nil {
-		this.ConsLink = consLink
-	}
+	this.ConsLink = consLink
 }
 
 //GetSyncState return sync state
 func (this *Peer) GetSyncState() uint32 {
-	if this != nil {
-		return this.syncState
-	}
-	return 0
+	return this.syncState
 }
 
 //SetSyncState set sync state to peer
 func (this *Peer) SetSyncState(state uint32) {
-	if this != nil {
-		atomic.StoreUint32(&(this.syncState), state)
-		if state == common.ESTABLISH {
-			actor.NotifyPeerState(this.GetPubKey(), true)
-		}
-	}
+	atomic.StoreUint32(&(this.syncState), state)
 }
 
 //GetConsState return peer`s consensus state
 func (this *Peer) GetConsState() uint32 {
-	if this != nil {
-		return this.consState
-	}
-	return 0
+	return this.consState
 }
 
 //SetConsState set consensus state to peer
 func (this *Peer) SetConsState(state uint32) {
-	if this != nil {
-		atomic.StoreUint32(&(this.consState), state)
-	}
+	atomic.StoreUint32(&(this.consState), state)
 }
 
 //GetSyncPort return peer`s sync port
 func (this *Peer) GetSyncPort() uint16 {
-	if this != nil {
-		return this.SyncLink.GetPort()
-	}
-	return 0
+	return this.SyncLink.GetPort()
 }
 
 //GetConsPort return peer`s consensus port
 func (this *Peer) GetConsPort() uint16 {
-	if this != nil {
-		return this.ConsLink.GetPort()
-	}
-	return 0
+	return this.ConsLink.GetPort()
 }
 
 //SetConsPort set peer`s consensus port
 func (this *Peer) SetConsPort(port uint16) {
-	if this != nil {
-		this.ConsLink.SetPort(port)
-	}
+	this.ConsLink.SetPort(port)
 }
 
 //SendToSync call sync link to send buffer
@@ -321,7 +280,6 @@ func (this *Peer) SendToCons(buf []byte) {
 //CloseSync halt sync connection
 func (this *Peer) CloseSync() {
 	this.SetSyncState(common.INACTIVITY)
-	actor.NotifyPeerState(this.GetPubKey(), false)
 	conn := this.SyncLink.GetConn()
 	if conn != nil {
 		conn.Close()
@@ -340,50 +298,32 @@ func (this *Peer) CloseCons() {
 
 //GetID return peer`s id
 func (this *Peer) GetID() uint64 {
-	if this != nil {
-		return this.base.GetID()
-	}
-	return 0
+	return this.base.GetID()
 }
 
 //GetRelay return peer`s relay state
 func (this *Peer) GetRelay() bool {
-	if this != nil {
-		return this.base.GetRelay()
-	}
-	return false
+	return this.base.GetRelay()
 }
 
 //GetServices return peer`s service state
 func (this *Peer) GetServices() uint64 {
-	if this != nil {
-		return this.base.GetServices()
-	}
-	return 0
+	return this.base.GetServices()
 }
 
 //GetTimeStamp return peer`s latest contact time in ticks
 func (this *Peer) GetTimeStamp() int64 {
-	if this != nil {
-		return this.SyncLink.GetRXTime().UnixNano()
-	}
-	return 0
+	return this.SyncLink.GetRXTime().UnixNano()
 }
 
 //GetContactTime return peer`s latest contact time in Time struct
 func (this *Peer) GetContactTime() time.Time {
-	if this != nil {
-		return this.SyncLink.GetRXTime()
-	}
-	return time.Now()
+	return this.SyncLink.GetRXTime()
 }
 
 //GetAddr return peer`s sync link address
 func (this *Peer) GetAddr() string {
-	if this != nil {
-		return this.SyncLink.GetAddr()
-	}
-	return ""
+	return this.SyncLink.GetAddr()
 }
 
 //GetAddr16 return peer`s sync link address in []byte
@@ -395,8 +335,8 @@ func (this *Peer) GetAddr16() ([16]byte, error) {
 	}
 	ip := net.ParseIP(addrIp).To16()
 	if ip == nil {
-		log.Error("Parse IP address error\n", this.GetAddr())
-		return result, errors.New("Parse IP address error")
+		log.Error("parse ip address error\n", this.GetAddr())
+		return result, errors.New("parse ip address error")
 	}
 
 	copy(result[:], ip[:16])
@@ -469,8 +409,8 @@ func (this *Peer) UpdateInfo(t time.Time, version uint32, services uint64,
 func parseIPAddr(s string) (string, error) {
 	i := strings.Index(s, ":")
 	if i < 0 {
-		log.Warn("Split IP address error")
-		return s, errors.New("Split IP address error")
+		log.Warn("split ip address error")
+		return s, errors.New("split ip address error")
 	}
 	return s[:i], nil
 }

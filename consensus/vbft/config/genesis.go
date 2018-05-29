@@ -19,12 +19,10 @@
 package vconfig
 
 import (
-	"bytes"
 	"encoding/json"
+	"fmt"
 	"hash/fnv"
-	"io/ioutil"
 	"math"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -33,31 +31,11 @@ import (
 	"github.com/ontio/ontology/common/log"
 )
 
-type PeerStakeInfo struct {
-	Index  uint32 `json:"index"`
-	NodeID string `json:"node_id"`
-	Stake  uint64 `json:"stake"`
-}
-
-type Configuration struct {
-	View                 uint32           `json:"view"`
-	N                    uint32           `json:"n"`
-	C                    uint32           `json:"c"`
-	K                    uint32           `json:"k"`
-	L                    uint32           `json:"l"`
-	InitTxid             uint64           `json:"init_txid"`
-	GenesisTimestamp     uint64           `json:"genesis_timestamp"`
-	BlockMsgDelay        uint32           `json:"block_msg_delay"`
-	HashMsgDelay         uint32           `json:"hash_msg_delay"`
-	PeerHandshakeTimeout uint32           `json:"peer_handshake_timeout"`
-	Peers                []*PeerStakeInfo `json:"peers"`
-}
-
-func shuffle_hash(txid uint64, ts uint64, id string, idx int) (uint64, error) {
+func shuffle_hash(txid uint64, ts uint64, id []byte, idx int) (uint64, error) {
 	data, err := json.Marshal(struct {
 		InitTxid       uint64 `json:"init_txid"`
 		BlockTimestamp uint64 `json:"block_timestamp"`
-		NodeID         string `json:"node_id"`
+		NodeID         []byte `json:"node_id"`
 		Index          int    `json:"index"`
 	}{txid, ts, id, idx})
 	if err != nil {
@@ -68,50 +46,42 @@ func shuffle_hash(txid uint64, ts uint64, id string, idx int) (uint64, error) {
 	hash.Write(data)
 	return hash.Sum64(), nil
 }
+func genConsensusPayload(cfg *config.VBFTConfig) ([]byte, error) {
 
-func genConsensusPayload(configFilename string) ([]byte, error) {
-	// load pos config
-	file, err := ioutil.ReadFile(configFilename)
+	if int(cfg.K) > len(cfg.Peers) {
+		return nil, fmt.Errorf("peer count is less than K")
+	}
+	if cfg.K < 2*cfg.C+1 {
+		return nil, fmt.Errorf("invalid config, K: %d, C: %d", cfg.K, cfg.C)
+	}
+	if cfg.L%cfg.K != 0 || cfg.L < cfg.K*2 {
+		return nil, fmt.Errorf("invalid config, K: %d, L: %d", cfg.K, cfg.L)
+	}
+	chainConfig, err := GenesisChainConfig(cfg, cfg.Peers)
 	if err != nil {
-		log.Errorf("Failed to open config file %s: %s", configFilename, err)
-		os.Exit(1)
+		return nil, err
 	}
+	vbftBlockInfo := &VbftBlockInfo{
+		Proposer:           math.MaxUint32,
+		LastConfigBlockNum: math.MaxUint32,
+		NewChainConfig:     chainConfig,
+	}
+	return json.Marshal(vbftBlockInfo)
+}
 
-	// Remove the UTF-8 Byte Order Mark
-	file = bytes.TrimPrefix(file, []byte("\xef\xbb\xbf"))
+//GenesisChainConfig return chainconfig
+func GenesisChainConfig(config *config.VBFTConfig, peersinfo []*config.VBFTPeerStakeInfo) (*ChainConfig, error) {
 
-	config := Configuration{}
-	if err := json.Unmarshal(file, &config); err != nil {
-		log.Errorf("Failed to unmarshal json file: %s", err)
-		os.Exit(1)
-	}
-	// pos config sanity checks
-	if int(config.K) > len(config.Peers) {
-		log.Error("peer count is less than K")
-		os.Exit(1)
-	}
-	if config.K < 2*config.C+1 {
-		log.Errorf("invalid config, K: %d, C: %d", config.K, config.C)
-		os.Exit(1)
-	}
-	if config.L%config.K != 0 || config.L < config.K*2 {
-		log.Errorf("invalid config, K: %d, L: %d", config.K, config.L)
-		os.Exit(1)
-	}
-
-	// sort peers by stake
-	peers := config.Peers
+	peers := peersinfo
 	sort.Slice(peers, func(i, j int) bool {
-		return peers[i].Stake > peers[j].Stake
+		return peers[i].InitPos > peers[j].InitPos
 	})
-
 	log.Debugf("sorted peers: %v", peers)
-
 	// get stake sum of top-k peers
 	var sum uint64
 	for i := 0; i < int(config.K); i++ {
-		sum += peers[i].Stake
-		log.Debugf("peer: %d, stack: %d", peers[i].Index, peers[i].Stake)
+		sum += peers[i].InitPos
+		log.Infof("peer: %d, stack: %d", peers[i].Index, peers[i].InitPos)
 	}
 
 	log.Debugf("sum of top K stakes: %d", sum)
@@ -119,84 +89,74 @@ func genConsensusPayload(configFilename string) ([]byte, error) {
 	// calculate peer ranks
 	scale := config.L/config.K - 1
 	if scale <= 0 {
-		log.Error("L is equal or less than K")
-		os.Exit(1)
+		return nil, fmt.Errorf("L is equal or less than K")
 	}
 
 	peerRanks := make([]uint64, 0)
 	for i := 0; i < int(config.K); i++ {
-		if peers[i].Stake == 0 {
-			log.Errorf("peers rank %d, has zero stake", i)
-			os.Exit(1)
+		if peers[i].InitPos == 0 {
+			return nil, fmt.Errorf("peers rank %d, has zero stake", i)
 		}
-		s := uint64(math.Ceil(float64(peers[i].Stake) * float64(scale) * float64(config.K) / float64(sum)))
+		s := uint64(math.Ceil(float64(peers[i].InitPos) * float64(scale) * float64(config.K) / float64(sum)))
 		peerRanks = append(peerRanks, s)
 	}
 
 	log.Debugf("peers rank table: %v", peerRanks)
 
 	// calculate pos table
-	chainPeers := make([]*PeerConfig, 0)
+	chainPeers := make(map[uint32]*PeerConfig, 0)
 	posTable := make([]uint32, 0)
 	for i := 0; i < int(config.K); i++ {
-		nodeId, err := StringID(peers[i].NodeID)
+		nodeId, err := StringID(peers[i].PeerPubkey)
 		if err != nil {
-			log.Errorf("Failed to format NodeID, index: %d: %s", peers[i].Index, err)
-			os.Exit(1)
+			return nil, fmt.Errorf("failed to format NodeID, index: %d: %s", peers[i].Index, err)
 		}
-		chainPeers = append(chainPeers, &PeerConfig{
+		chainPeers[peers[i].Index] = &PeerConfig{
 			Index: peers[i].Index,
 			ID:    nodeId,
-		})
+		}
 		for j := uint64(0); j < peerRanks[i]; j++ {
 			posTable = append(posTable, peers[i].Index)
 		}
 	}
-
-	log.Debugf("init pos table: %v", posTable)
-
 	// shuffle
 	for i := len(posTable) - 1; i > 0; i-- {
-		h, err := shuffle_hash(config.InitTxid, config.GenesisTimestamp, peers[posTable[i]].NodeID, i)
+		h, err := shuffle_hash(0, 0, chainPeers[posTable[i]].ID.Bytes(), i)
 		if err != nil {
-			log.Errorf("Failed to calculate hash value: %s", err)
-			os.Exit(1)
+			return nil, fmt.Errorf("failed to calculate hash value: %s", err)
 		}
 		j := h % uint64(i)
 		posTable[i], posTable[j] = posTable[j], posTable[i]
 	}
+	log.Debugf("init pos table: %v", posTable)
 
-	log.Debugf("shuffled pos table: %v", posTable)
 	// generate chain config, and save to ChainConfigFile
+	peerCfgs := make([]*PeerConfig, 0)
+	for i := 0; i < int(config.K); i++ {
+		peerCfgs = append(peerCfgs, chainPeers[peers[i].Index])
+	}
+
 	chainConfig := &ChainConfig{
-		Version:              Version,
-		View:                 config.View,
+		Version:              1,
+		View:                 1,
 		N:                    config.N,
 		C:                    config.C,
 		BlockMsgDelay:        time.Duration(config.BlockMsgDelay) * time.Millisecond,
 		HashMsgDelay:         time.Duration(config.HashMsgDelay) * time.Millisecond,
 		PeerHandshakeTimeout: time.Duration(config.PeerHandshakeTimeout) * time.Second,
-		Peers:                chainPeers,
+		Peers:                peerCfgs,
 		PosTable:             posTable,
+		MaxBlockChangeView:   config.MaxBlockChangeView,
 	}
-
-	vbftBlockInfo := &VbftBlockInfo{
-		Proposer:           math.MaxUint32,
-		LastConfigBlockNum: math.MaxUint64,
-		NewChainConfig:     chainConfig,
-	}
-
-	return json.Marshal(vbftBlockInfo)
+	return chainConfig, nil
 }
 
 func GenesisConsensusPayload() ([]byte, error) {
-	consensusType := strings.ToLower(config.Parameters.ConsensusType)
-	consensusConfigFile := config.Parameters.ConsensusConfigPath
+	consensusType := strings.ToLower(config.DefConfig.Genesis.ConsensusType)
 
 	switch consensusType {
 	case "vbft":
-		return genConsensusPayload(consensusConfigFile)
+		return genConsensusPayload(config.DefConfig.Genesis.VBFT)
 	}
-
 	return nil, nil
 }

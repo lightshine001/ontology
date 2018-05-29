@@ -22,14 +22,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/ontio/ontology-crypto/keypair"
+	//"github.com/ontio/ontology/core/types"
+	"github.com/ontio/ontology/common"
 	"io/ioutil"
 	"os"
-
-	"github.com/ontio/ontology-crypto/keypair"
-	"github.com/ontio/ontology/common"
 )
 
-type Accountx struct {
+/** AccountData - for wallet read and save, no crypto object included **/
+type AccountData struct {
 	keypair.ProtectedKey
 
 	Label     string `json:"label"`
@@ -40,7 +41,7 @@ type Accountx struct {
 	PassHash  string `json:"passwordHash"`
 }
 
-func (this *Accountx) SetKeyPair(keyinfo *keypair.ProtectedKey) {
+func (this *AccountData) SetKeyPair(keyinfo *keypair.ProtectedKey) {
 	this.Address = keyinfo.Address
 	this.EncAlg = keyinfo.EncAlg
 	this.Alg = keyinfo.Alg
@@ -48,7 +49,7 @@ func (this *Accountx) SetKeyPair(keyinfo *keypair.ProtectedKey) {
 	this.Key = keyinfo.Key
 	this.Param = keyinfo.Param
 }
-func (this *Accountx) GetKeyPair() *keypair.ProtectedKey {
+func (this *AccountData) GetKeyPair() *keypair.ProtectedKey {
 	var keyinfo = new(keypair.ProtectedKey)
 	keyinfo.Address = this.Address
 	keyinfo.EncAlg = this.EncAlg
@@ -58,7 +59,7 @@ func (this *Accountx) GetKeyPair() *keypair.ProtectedKey {
 	keyinfo.Param = this.Param
 	return keyinfo
 }
-func (this *Accountx) VerifyPassword(pwd []byte) bool {
+func (this *AccountData) VerifyPassword(pwd []byte) bool {
 	passwordHash := sha256.Sum256(pwd)
 	if this.PassHash != hex.EncodeToString(passwordHash[:]) {
 		return false
@@ -66,45 +67,63 @@ func (this *Accountx) VerifyPassword(pwd []byte) bool {
 	return true
 }
 
+func (this *AccountData) SetLabel(label string) {
+	this.Label = label
+}
+
 type WalletData struct {
 	Name       string               `json:"name"`
 	Version    string               `json:"version"`
 	Scrypt     *keypair.ScryptParam `json:"scrypt"`
 	Identities []Identity           `json:"identities"`
-	Accounts   []*Accountx          `json:"accounts"`
+	Accounts   []*AccountData       `json:"accounts"`
 	Extra      string               `json:"extra"`
 }
 
-//TODO:: for temporary use, these params should be set by user?
-func (this *WalletData) Inititalize() {
-	this.Name = "MyWallet"
-	this.Version = "1.1"
-	this.Scrypt = keypair.GetScryptParameters()
-	this.Identities = nil
-	this.Extra = "null"
-	this.Accounts = make([]*Accountx, 0, 0)
+func NewWalletData() *WalletData {
+	return &WalletData{
+		Name:       "MyWallet",
+		Version:    "1.1",
+		Scrypt:     keypair.GetScryptParameters(),
+		Identities: nil,
+		Extra:      "",
+		Accounts:   make([]*AccountData, 0, 0),
+	}
 }
 
-func (this *WalletData) AddAccount(acc *Accountx) {
-	if len(this.Accounts) == 0 {
-		acc.IsDefault = true
-	}
+func (this *WalletData) AddAccount(acc *AccountData) {
 	this.Accounts = append(this.Accounts, acc)
 }
 
-func (this *WalletData) DelAccount(index int) string {
-	addr := this.Accounts[index-1].Address
-	this.Accounts = append(this.Accounts[:index-1], this.Accounts[index:]...)
-	return addr
+func (this *WalletData) DelAccount(address string) {
+	_, index := this.GetAccountByAddress(address)
+	if index < 0 {
+		return
+	}
+	this.Accounts = append(this.Accounts[:index], this.Accounts[index+1:]...)
 }
 
-func (this *WalletData) GetDefaultAccount() *Accountx {
-	for _, i := range this.Accounts {
-		if i.IsDefault {
-			return i
+func (this *WalletData) GetAccountByIndex(index int) *AccountData {
+	if index < 0 || index >= len(this.Accounts) {
+		return nil
+	}
+	return this.Accounts[index]
+}
+
+func (this *WalletData) GetAccountByAddress(address string) (*AccountData, int) {
+	index := -1
+	var accData *AccountData
+	for i, acc := range this.Accounts {
+		if acc.Address == address {
+			index = i
+			accData = acc
+			break
 		}
 	}
-	return nil
+	if index == -1 {
+		return nil, -1
+	}
+	return accData, index
 }
 
 func (this *WalletData) Save(path string) error {

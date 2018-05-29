@@ -21,6 +21,7 @@ package vbft
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/ontio/ontology-crypto/keypair"
@@ -28,7 +29,6 @@ import (
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/serialization"
 	vconfig "github.com/ontio/ontology/consensus/vbft/config"
-	"github.com/ontio/ontology/core/types"
 )
 
 type MsgType uint8
@@ -50,8 +50,8 @@ const (
 
 type ConsensusMsg interface {
 	Type() MsgType
-	Verify(pub *keypair.PublicKey) error
-	GetBlockNum() uint64
+	Verify(pub keypair.PublicKey) error
+	GetBlockNum() uint32
 	Serialize() ([]byte, error)
 }
 
@@ -63,65 +63,43 @@ func (msg *blockProposalMsg) Type() MsgType {
 	return BlockProposalMessage
 }
 
-func (msg *blockProposalMsg) Verify(pub *keypair.PublicKey) error {
-	sigData := msg.Block.Block.Header.SigData
-	msg.Block.Block.Header.SigData = nil
+func (msg *blockProposalMsg) Verify(pub keypair.PublicKey) error {
+	// verify block
+	if len(msg.Block.Block.Header.SigData) == 0 {
+		return errors.New("no sigdata in block")
+	}
+	sigdata := msg.Block.Block.Header.SigData[0]
+	hash := msg.Block.Block.Hash()
 
-	defer func() {
-		msg.Block.Block.Header.SigData = sigData
-	}()
-
-	if len(sigData) != 2 {
-		return fmt.Errorf("verify sigData error")
-	}
-	blkHeader := &types.Header{
-		PrevBlockHash:    msg.Block.Block.Header.PrevBlockHash,
-		TransactionsRoot: msg.Block.Block.Header.TransactionsRoot,
-		BlockRoot:        msg.Block.Block.Header.BlockRoot,
-		Timestamp:        msg.Block.Block.Header.Timestamp,
-		Height:           msg.Block.Block.Header.Height,
-		ConsensusData:    msg.Block.Block.Header.ConsensusData,
-		ConsensusPayload: msg.Block.Block.Header.ConsensusPayload,
-		SigData:          [][]byte{{}, {}},
-	}
-	blk := &Block{
-		Block: &types.Block{
-			Header: blkHeader,
-		},
-		Info: msg.Block.Info,
-	}
-	blk.Block.Hash()
-	msgdata := &blockProposalMsg{
-		Block: blk,
-	}
-
-	sigone, err := signature.Deserialize(sigData[1])
+	sig, err := signature.Deserialize(sigdata)
 	if err != nil {
-		return fmt.Errorf("failed to deserialize proposal msg sigone: %s", err)
+		return fmt.Errorf("deserialize block sig: %s", err)
+	}
+	if !signature.Verify(pub, hash[:], sig) {
+		return fmt.Errorf("failed to verify block sig")
 	}
 
-	if data, err := msgdata.Serialize(); err != nil {
-		return fmt.Errorf("failed to serialize proposal msg sigone: %s", err)
-	} else if !signature.Verify(*pub, data, sigone) {
-		return fmt.Errorf("failed to verify proposal msg sigone")
+	// verify empty block
+	if msg.Block.EmptyBlock != nil {
+		if len(msg.Block.EmptyBlock.Header.SigData) == 0 {
+			return errors.New("no sigdata in empty block")
+		}
+		sigdata := msg.Block.EmptyBlock.Header.SigData[0]
+		hash := msg.Block.EmptyBlock.Hash()
+		sig, err := signature.Deserialize(sigdata)
+		if err != nil {
+			return fmt.Errorf("deserialize empty block sig: %s", err)
+		}
+		if !signature.Verify(pub, hash[:], sig) {
+			return fmt.Errorf("failed to verify empty block sig")
+		}
 	}
 
-	blk.Block.Transactions = msg.Block.Block.Transactions
-
-	sig, err := signature.Deserialize(sigData[0])
-	if err != nil {
-		return fmt.Errorf("failed to deserialize proposal msg sig: %s", err)
-	}
-	if data, err := msgdata.Serialize(); err != nil {
-		return fmt.Errorf("failed to serialize proposal msg: %s", err)
-	} else if !signature.Verify(*pub, data, sig) {
-		return fmt.Errorf("failed to verify proposal msg sig")
-	}
 	return nil
 }
 
-func (msg *blockProposalMsg) GetBlockNum() uint64 {
-	return uint64(msg.Block.Block.Header.Height)
+func (msg *blockProposalMsg) GetBlockNum() uint32 {
+	return msg.Block.Block.Header.Height
 }
 
 func (msg *blockProposalMsg) Serialize() ([]byte, error) {
@@ -129,18 +107,12 @@ func (msg *blockProposalMsg) Serialize() ([]byte, error) {
 }
 
 func (msg *blockProposalMsg) UnmarshalJSON(data []byte) error {
-	buf := bytes.NewBuffer(data)
-
-	blk := &types.Block{}
-	if err := blk.Deserialize(buf); err != nil {
-		return fmt.Errorf("unmarshal block type: %s", err)
+	blk := &Block{}
+	if err := blk.Deserialize(data); err != nil {
+		return err
 	}
 
-	block, err := initVbftBlock(blk)
-	if err != nil {
-		return fmt.Errorf("init vbft block: %s", err)
-	}
-	msg.Block = block
+	msg.Block = blk
 	return nil
 }
 
@@ -156,40 +128,31 @@ type FaultyReport struct {
 type blockEndorseMsg struct {
 	Endorser          uint32          `json:"endorser"`
 	EndorsedProposer  uint32          `json:"endorsed_proposer"`
-	BlockNum          uint64          `json:"block_num"`
+	BlockNum          uint32          `json:"block_num"`
 	EndorsedBlockHash common.Uint256  `json:"endorsed_block_hash"`
 	EndorseForEmpty   bool            `json:"endorse_for_empty"`
 	FaultyProposals   []*FaultyReport `json:"faulty_proposals"`
-	Sig               []byte          `json:"sig"`
+	ProposerSig       []byte          `json:"proposer_sig"`
+	EndorserSig       []byte          `json:"endorser_sig"`
 }
 
 func (msg *blockEndorseMsg) Type() MsgType {
 	return BlockEndorseMessage
 }
 
-func (msg *blockEndorseMsg) Verify(pub *keypair.PublicKey) error {
-	sigData := msg.Sig
-	msg.Sig = nil
-
-	defer func() {
-		msg.Sig = sigData
-	}()
-
-	sig, err := signature.Deserialize(sigData)
+func (msg *blockEndorseMsg) Verify(pub keypair.PublicKey) error {
+	hash := msg.EndorsedBlockHash
+	sig, err := signature.Deserialize(msg.EndorserSig)
 	if err != nil {
-		return fmt.Errorf("failed to deserialize endorse msg sig: %s", err)
+		return fmt.Errorf("deserialize block sig: %s", err)
 	}
-
-	if data, err := msg.Serialize(); err != nil {
-		return fmt.Errorf("failed to serialize endorse msg: %s", err)
-	} else if !signature.Verify(*pub, data, sig) {
-		return fmt.Errorf("failed to verify endorse msg")
+	if !signature.Verify(pub, hash[:], sig) {
+		return fmt.Errorf("failed to verify block sig")
 	}
-
 	return nil
 }
 
-func (msg *blockEndorseMsg) GetBlockNum() uint64 {
+func (msg *blockEndorseMsg) GetBlockNum() uint32 {
 	return msg.BlockNum
 }
 
@@ -198,42 +161,35 @@ func (msg *blockEndorseMsg) Serialize() ([]byte, error) {
 }
 
 type blockCommitMsg struct {
-	Committer       uint32          `json:"committer"`
-	BlockProposer   uint32          `json:"block_proposer"`
-	BlockNum        uint64          `json:"block_num"`
-	CommitBlockHash common.Uint256  `json:"commit_block_hash"`
-	CommitForEmpty  bool            `json:"commit_for_empty"`
-	FaultyVerifies  []*FaultyReport `json:"faulty_verifies"`
-	Sig             []byte          `json:"sig"`
+	Committer       uint32            `json:"committer"`
+	BlockProposer   uint32            `json:"block_proposer"`
+	BlockNum        uint32            `json:"block_num"`
+	CommitBlockHash common.Uint256    `json:"commit_block_hash"`
+	CommitForEmpty  bool              `json:"commit_for_empty"`
+	FaultyVerifies  []*FaultyReport   `json:"faulty_verifies"`
+	ProposerSig     []byte            `json:"proposer_sig"`
+	EndorsersSig    map[uint32][]byte `json:"endorsers_sig"`
+	CommitterSig    []byte            `json:"committer_sig"`
 }
 
 func (msg *blockCommitMsg) Type() MsgType {
 	return BlockCommitMessage
 }
 
-func (msg *blockCommitMsg) Verify(pub *keypair.PublicKey) error {
-	sigData := msg.Sig
-	msg.Sig = nil
-
-	defer func() {
-		msg.Sig = sigData
-	}()
-
-	sig, err := signature.Deserialize(sigData)
+func (msg *blockCommitMsg) Verify(pub keypair.PublicKey) error {
+	hash := msg.CommitBlockHash
+	sig, err := signature.Deserialize(msg.CommitterSig)
 	if err != nil {
-		return fmt.Errorf("failed to deserialize commit msg sig: %s", err)
+		return fmt.Errorf("deserialize block sig: %s", err)
 	}
-
-	if data, err := msg.Serialize(); err != nil {
-		return fmt.Errorf("failed to serialize commit msg: %s", err)
-	} else if !signature.Verify(*pub, data, sig) {
-		return fmt.Errorf("failed to verify commit msg")
+	if !signature.Verify(pub, hash[:], sig) {
+		return fmt.Errorf("failed to verify block sig")
 	}
 
 	return nil
 }
 
-func (msg *blockCommitMsg) GetBlockNum() uint64 {
+func (msg *blockCommitMsg) GetBlockNum() uint32 {
 	return msg.BlockNum
 }
 
@@ -242,40 +198,22 @@ func (msg *blockCommitMsg) Serialize() ([]byte, error) {
 }
 
 type peerHandshakeMsg struct {
-	CommittedBlockNumber uint64               `json:"committed_block_number"`
+	CommittedBlockNumber uint32               `json:"committed_block_number"`
 	CommittedBlockHash   common.Uint256       `json:"committed_block_hash"`
 	CommittedBlockLeader uint32               `json:"committed_block_leader"`
 	ChainConfig          *vconfig.ChainConfig `json:"chain_config"`
-	Sig                  []byte               `json:"sig"`
 }
 
 func (msg *peerHandshakeMsg) Type() MsgType {
 	return PeerHandshakeMessage
 }
 
-func (msg *peerHandshakeMsg) Verify(pub *keypair.PublicKey) error {
-	sigData := msg.Sig
-	msg.Sig = nil
-
-	defer func() {
-		msg.Sig = sigData
-	}()
-
-	sig, err := signature.Deserialize(sigData)
-	if err != nil {
-		return fmt.Errorf("failed to deserialize handshake msg sig: %s", err)
-	}
-
-	if data, err := msg.Serialize(); err != nil {
-		return fmt.Errorf("failed to serialize handshake msg: %s", err)
-	} else if !signature.Verify(*pub, data, sig) {
-		return fmt.Errorf("failed to verify handshake msg")
-	}
+func (msg *peerHandshakeMsg) Verify(pub keypair.PublicKey) error {
 
 	return nil
 }
 
-func (msg *peerHandshakeMsg) GetBlockNum() uint64 {
+func (msg *peerHandshakeMsg) GetBlockNum() uint32 {
 	return 0
 }
 
@@ -284,40 +222,23 @@ func (msg *peerHandshakeMsg) Serialize() ([]byte, error) {
 }
 
 type peerHeartbeatMsg struct {
-	CommittedBlockNumber uint64         `json:"committed_block_number"`
+	CommittedBlockNumber uint32         `json:"committed_block_number"`
 	CommittedBlockHash   common.Uint256 `json:"committed_block_hash"`
 	CommittedBlockLeader uint32         `json:"committed_block_leader"`
+	Endorsers            [][]byte       `json:"endorsers"`
+	EndorsersSig         [][]byte       `json:"endorsers_sig"`
 	ChainConfigView      uint32         `json:"chain_config_view"`
-	Sig                  []byte         `json:"sig"`
 }
 
 func (msg *peerHeartbeatMsg) Type() MsgType {
 	return PeerHeartbeatMessage
 }
 
-func (msg *peerHeartbeatMsg) Verify(pub *keypair.PublicKey) error {
-	sigData := msg.Sig
-	msg.Sig = nil
-
-	defer func() {
-		msg.Sig = sigData
-	}()
-
-	sig, err := signature.Deserialize(sigData)
-	if err != nil {
-		return fmt.Errorf("failed to deserialize heartbeat msg sig: %s", err)
-	}
-
-	if data, err := msg.Serialize(); err != nil {
-		return fmt.Errorf("failed to serialize heartbeat msg: %s", err)
-	} else if !signature.Verify(*pub, data, sig) {
-		return fmt.Errorf("failed to verify heartbeat msg")
-	}
-
+func (msg *peerHeartbeatMsg) Verify(pub keypair.PublicKey) error {
 	return nil
 }
 
-func (msg *peerHeartbeatMsg) GetBlockNum() uint64 {
+func (msg *peerHeartbeatMsg) GetBlockNum() uint32 {
 	return 0
 }
 
@@ -326,37 +247,18 @@ func (msg *peerHeartbeatMsg) Serialize() ([]byte, error) {
 }
 
 type BlockInfoFetchMsg struct {
-	StartBlockNum uint64 `json:"start_block_num"`
-	Sig           []byte `json:"sig"`
+	StartBlockNum uint32 `json:"start_block_num"`
 }
 
 func (msg *BlockInfoFetchMsg) Type() MsgType {
 	return BlockInfoFetchMessage
 }
 
-func (msg *BlockInfoFetchMsg) Verify(pub *keypair.PublicKey) error {
-	sigData := msg.Sig
-	msg.Sig = nil
-
-	defer func() {
-		msg.Sig = sigData
-	}()
-
-	sig, err := signature.Deserialize(sigData)
-	if err != nil {
-		return fmt.Errorf("failed to deserialize blockInfoFetch msg sig: %s", err)
-	}
-
-	if data, err := msg.Serialize(); err != nil {
-		return fmt.Errorf("failed to serialize blockinfo fetch msg: %s", err)
-	} else if !signature.Verify(*pub, data, sig) {
-		return fmt.Errorf("failed to verify blockinfo fetch msg")
-	}
-
+func (msg *BlockInfoFetchMsg) Verify(pub keypair.PublicKey) error {
 	return nil
 }
 
-func (msg *BlockInfoFetchMsg) GetBlockNum() uint64 {
+func (msg *BlockInfoFetchMsg) GetBlockNum() uint32 {
 	return 0
 }
 
@@ -365,43 +267,25 @@ func (msg *BlockInfoFetchMsg) Serialize() ([]byte, error) {
 }
 
 type BlockInfo_ struct {
-	BlockNum uint64 `json:"block_num"`
-	Proposer uint32 `json:"proposer"`
+	BlockNum   uint32            `json:"block_num"`
+	Proposer   uint32            `json:"proposer"`
+	Signatures map[uint32][]byte `json:"signatures"`
 }
 
 // to fetch committed block from neighbours
 type BlockInfoFetchRespMsg struct {
 	Blocks []*BlockInfo_ `json:"blocks"`
-	Sig    []byte        `json:"sig"`
 }
 
 func (msg *BlockInfoFetchRespMsg) Type() MsgType {
 	return BlockInfoFetchRespMessage
 }
 
-func (msg *BlockInfoFetchRespMsg) Verify(pub *keypair.PublicKey) error {
-	sigData := msg.Sig
-	msg.Sig = nil
-
-	defer func() {
-		msg.Sig = sigData
-	}()
-
-	sig, err := signature.Deserialize(sigData)
-	if err != nil {
-		return fmt.Errorf("failed to deserialize blockInfoFetchResp msg sig: %s", err)
-	}
-
-	if data, err := msg.Serialize(); err != nil {
-		return fmt.Errorf("failed to serialize blockinfo resp msg: %s", err)
-	} else if !signature.Verify(*pub, data, sig) {
-		return fmt.Errorf("failed to verify blockinfo resp msg")
-	}
-
+func (msg *BlockInfoFetchRespMsg) Verify(pub keypair.PublicKey) error {
 	return nil
 }
 
-func (msg *BlockInfoFetchRespMsg) GetBlockNum() uint64 {
+func (msg *BlockInfoFetchRespMsg) GetBlockNum() uint32 {
 	return 0
 }
 
@@ -411,37 +295,18 @@ func (msg *BlockInfoFetchRespMsg) Serialize() ([]byte, error) {
 
 // block fetch msg is to fetch block which could have not been committed or endorsed
 type blockFetchMsg struct {
-	BlockNum uint64 `json:"block_num"`
-	Sig      []byte `json:"sig"`
+	BlockNum uint32 `json:"block_num"`
 }
 
 func (msg *blockFetchMsg) Type() MsgType {
 	return BlockFetchMessage
 }
 
-func (msg *blockFetchMsg) Verify(pub *keypair.PublicKey) error {
-	sigData := msg.Sig
-	msg.Sig = nil
-
-	defer func() {
-		msg.Sig = sigData
-	}()
-
-	sig, err := signature.Deserialize(sigData)
-	if err != nil {
-		return fmt.Errorf("failed to deserialize blockFetch msg sig: %s", err)
-	}
-
-	if data, err := msg.Serialize(); err != nil {
-		return fmt.Errorf("failed to serialize blockfetch msg: %s", err)
-	} else if !signature.Verify(*pub, data, sig) {
-		return fmt.Errorf("failed to verify blockfetch msg: %s", err)
-	}
-
+func (msg *blockFetchMsg) Verify(pub keypair.PublicKey) error {
 	return nil
 }
 
-func (msg *blockFetchMsg) GetBlockNum() uint64 {
+func (msg *blockFetchMsg) GetBlockNum() uint32 {
 	return 0
 }
 
@@ -450,58 +315,38 @@ func (msg *blockFetchMsg) Serialize() ([]byte, error) {
 }
 
 type BlockFetchRespMsg struct {
-	BlockNumber uint64         `json:"block_number"`
+	BlockNumber uint32         `json:"block_number"`
 	BlockHash   common.Uint256 `json:"block_hash"`
 	BlockData   *Block         `json:"block_data"`
-	Sig         []byte         `json:"sig"`
 }
 
 func (msg *BlockFetchRespMsg) Type() MsgType {
 	return BlockFetchRespMessage
 }
 
-func (msg *BlockFetchRespMsg) Verify(pub *keypair.PublicKey) error {
-	sigData := msg.Sig
-	msg.Sig = nil
-
-	defer func() {
-		msg.Sig = sigData
-	}()
-
-	sig, err := signature.Deserialize(sigData)
-	if err != nil {
-		return fmt.Errorf("failed to deserialize blockFetchResp msg sig: %s", err)
-	}
-
-	if data, err := msg.Serialize(); err != nil {
-		return fmt.Errorf("failed to serialize blockfetch rsp msg: %s", err)
-	} else if !signature.Verify(*pub, data, sig) {
-		return fmt.Errorf("failed to verify blockfetch rsp msg")
-	}
-
+func (msg *BlockFetchRespMsg) Verify(pub keypair.PublicKey) error {
 	return nil
 }
 
-func (msg *BlockFetchRespMsg) GetBlockNum() uint64 {
+func (msg *BlockFetchRespMsg) GetBlockNum() uint32 {
 	return 0
 }
 
 func (msg *BlockFetchRespMsg) Serialize() ([]byte, error) {
 	buffer := bytes.NewBuffer([]byte{})
-	serialization.WriteUint64(buffer, msg.BlockNumber)
+	serialization.WriteUint32(buffer, msg.BlockNumber)
 	msg.BlockHash.Serialize(buffer)
 	blockbuff, err := msg.BlockData.Serialize()
 	if err != nil {
 		return nil, err
 	}
 	buffer.Write(blockbuff)
-	serialization.WriteVarBytes(buffer, msg.Sig)
 	return buffer.Bytes(), nil
 }
 
 func (msg *BlockFetchRespMsg) Deserialize(data []byte) error {
 	buffer := bytes.NewBuffer(data)
-	blocknum, err := serialization.ReadUint64(buffer)
+	blocknum, err := serialization.ReadUint32(buffer)
 	if err != nil {
 		return err
 	}
@@ -510,56 +355,29 @@ func (msg *BlockFetchRespMsg) Deserialize(data []byte) error {
 	if err != nil {
 		return err
 	}
-	blk := &types.Block{}
-	if err := blk.Deserialize(buffer); err != nil {
+	blk := &Block{}
+	if err := blk.Deserialize(buffer.Bytes()); err != nil {
 		return fmt.Errorf("unmarshal block type: %s", err)
 	}
-	block, err := initVbftBlock(blk)
-	if err != nil {
-		return fmt.Errorf("init vbft block: %s", err)
-	}
-	msg.BlockData = block
-	sig, err := serialization.ReadVarBytes(buffer)
-	if err != nil {
-		return err
-	}
-	msg.Sig = sig
+	msg.BlockData = blk
 	return nil
 }
 
 // proposal fetch msg is to fetch proposal when peer failed to get proposal locally
 type proposalFetchMsg struct {
-	BlockNum uint64 `json:"block_num"`
-	Sig      []byte `json:"sig"`
+	ProposerID uint32 `json:"proposer_id"`
+	BlockNum   uint32 `json:"block_num"`
 }
 
 func (msg *proposalFetchMsg) Type() MsgType {
 	return ProposalFetchMessage
 }
 
-func (msg *proposalFetchMsg) Verify(pub *keypair.PublicKey) error {
-	sigData := msg.Sig
-	msg.Sig = nil
-
-	defer func() {
-		msg.Sig = sigData
-	}()
-
-	sig, err := signature.Deserialize(sigData)
-	if err != nil {
-		return fmt.Errorf("failed to deserialize proposalFetch msg sig: %s", err)
-	}
-
-	if data, err := msg.Serialize(); err != nil {
-		return fmt.Errorf("failed to serialize proposalFetch msg: %s", err)
-	} else if !signature.Verify(*pub, data, sig) {
-		return fmt.Errorf("failed to verify proposalFetch msg")
-	}
-
+func (msg *proposalFetchMsg) Verify(pub keypair.PublicKey) error {
 	return nil
 }
 
-func (msg *proposalFetchMsg) GetBlockNum() uint64 {
+func (msg *proposalFetchMsg) GetBlockNum() uint32 {
 	return 0
 }
 

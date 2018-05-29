@@ -24,13 +24,12 @@ import (
 	"time"
 
 	"github.com/ontio/ontology-crypto/keypair"
-	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/consensus/vbft/config"
 )
 
 type Peer struct {
 	Index          uint32
-	PubKey         *keypair.PublicKey
+	PubKey         keypair.PublicKey
 	handShake      *peerHandshakeMsg
 	LatestInfo     *peerHeartbeatMsg // latest heartbeat msg
 	LastUpdateTime time.Time         // time received heartbeat from peer
@@ -45,7 +44,8 @@ type PeerPool struct {
 	configs map[uint32]*vconfig.PeerConfig // peer index to peer
 	IDMap   map[vconfig.NodeID]uint32
 
-	peers map[uint32]*Peer
+	peers                  map[uint32]*Peer
+	peerConnectionWaitings map[uint32]chan struct{}
 }
 
 func NewPeerPool(maxSize int, server *Server) *PeerPool {
@@ -55,6 +55,7 @@ func NewPeerPool(maxSize int, server *Server) *PeerPool {
 		configs: make(map[uint32]*vconfig.PeerConfig),
 		IDMap:   make(map[vconfig.NodeID]uint32),
 		peers:   make(map[uint32]*Peer),
+		peerConnectionWaitings: make(map[uint32]chan struct{}),
 	}
 }
 
@@ -67,6 +68,7 @@ func (pool *PeerPool) clean() {
 	pool.peers = make(map[uint32]*Peer)
 }
 
+// FIXME: should rename to isPeerConnected
 func (pool *PeerPool) isNewPeer(peerIdx uint32) bool {
 	pool.lock.RLock()
 	defer pool.lock.RUnlock()
@@ -110,15 +112,40 @@ func (pool *PeerPool) getActivePeerCount() int {
 	return n
 }
 
+func (pool *PeerPool) waitPeerConnected(peerIdx uint32) error {
+	if !pool.isNewPeer(peerIdx) {
+		// peer already connected
+		return nil
+	}
+
+	var C chan struct{}
+	pool.lock.Lock()
+	if _, present := pool.peerConnectionWaitings[peerIdx]; !present {
+		C = make(chan struct{})
+		pool.peerConnectionWaitings[peerIdx] = C
+	} else {
+		C = pool.peerConnectionWaitings[peerIdx]
+	}
+	pool.lock.Unlock()
+
+	<-C
+	return nil
+}
+
 func (pool *PeerPool) peerConnected(peerIdx uint32) error {
 	pool.lock.Lock()
 	defer pool.lock.Unlock()
 
 	// new peer, rather than modify
 	pool.peers[peerIdx] = &Peer{
-		Index:     peerIdx,
-		PubKey:    pool.peers[peerIdx].PubKey,
-		connected: true,
+		Index:          peerIdx,
+		PubKey:         pool.peers[peerIdx].PubKey,
+		LastUpdateTime: time.Now(),
+		connected:      true,
+	}
+	if C, present := pool.peerConnectionWaitings[peerIdx]; present {
+		delete(pool.peerConnectionWaitings, peerIdx)
+		close(C)
 	}
 	return nil
 }
@@ -161,6 +188,12 @@ func (pool *PeerPool) peerHeartbeat(peerIdx uint32, msg *peerHeartbeatMsg) error
 	pool.lock.Lock()
 	defer pool.lock.Unlock()
 
+	if C, present := pool.peerConnectionWaitings[peerIdx]; present {
+		// wake up peer connection waitings
+		delete(pool.peerConnectionWaitings, peerIdx)
+		close(C)
+	}
+
 	pool.peers[peerIdx] = &Peer{
 		Index:          peerIdx,
 		PubKey:         pool.peers[peerIdx].PubKey,
@@ -194,9 +227,9 @@ func (pool *PeerPool) GetPeerIndex(nodeId vconfig.NodeID) (uint32, bool) {
 	return idx, present
 }
 
-func (pool *PeerPool) GetPeerPubKey(peerIdx uint32) *keypair.PublicKey {
+func (pool *PeerPool) GetPeerPubKey(peerIdx uint32) keypair.PublicKey {
 	pool.lock.RLock()
-	pool.lock.RUnlock()
+	defer pool.lock.RUnlock()
 
 	if p, present := pool.peers[peerIdx]; present && p != nil {
 		return p.PubKey
@@ -213,12 +246,9 @@ func (pool *PeerPool) isPeerAlive(peerIdx uint32) bool {
 	if p == nil || !p.connected {
 		return false
 	}
-	if time.Now().Sub(p.LastUpdateTime) > peerHandshakeTimeout*2 {
-		if p.LastUpdateTime.Unix() > 0 {
-			log.Errorf("server %d: peer %d sems disconnected, %v, %v", pool.server.Index, peerIdx, time.Now(), p.LastUpdateTime)
-		}
-		return false
-	}
+
+	// p2pserver keeps peer alive
+
 	return true
 }
 

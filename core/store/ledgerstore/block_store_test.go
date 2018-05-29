@@ -24,10 +24,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ontio/ontology-crypto/keypair"
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/core/payload"
 	"github.com/ontio/ontology/core/types"
-	"github.com/ontio/ontology-crypto/keypair"
 )
 
 func TestVersion(t *testing.T) {
@@ -104,12 +104,10 @@ func TestBlockHash(t *testing.T) {
 }
 
 func TestSaveTransaction(t *testing.T) {
-	bookKeepingPayload := &payload.Bookkeeping{
-		Nonce: uint64(time.Now().UnixNano()),
-	}
+	invoke := &payload.InvokeCode{}
 	tx := &types.Transaction{
-		TxType:     types.BookKeeping,
-		Payload:    bookKeepingPayload,
+		TxType:     types.Invoke,
+		Payload:    invoke,
 		Attributes: []*types.TxAttribute{},
 	}
 	blockHeight := uint32(1)

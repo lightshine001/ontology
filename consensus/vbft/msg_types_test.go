@@ -20,44 +20,26 @@ package vbft
 
 import (
 	"encoding/json"
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/ontio/ontology/account"
-	common "github.com/ontio/ontology/common"
-	vconfig "github.com/ontio/ontology/consensus/vbft/config"
-	"github.com/ontio/ontology/core/payload"
+	"github.com/ontio/ontology/common"
+	"github.com/ontio/ontology/consensus/vbft/config"
+	"github.com/ontio/ontology/core/signature"
 	"github.com/ontio/ontology/core/types"
 )
 
-func constructProposalMsg(acc *account.Account) (*blockProposalMsg, error) {
-	bookKeepingPayload := &payload.BookKeeping{
-		Nonce: uint64(time.Now().UnixNano()),
-	}
-	tx := &types.Transaction{
-		TxType:     types.BookKeeping,
-		Payload:    bookKeepingPayload,
-		Attributes: []*types.TxAttribute{},
-	}
-	var txs []*types.Transaction
-	txs = append(txs, tx)
-	txHash := []common.Uint256{}
-	for _, t := range txs {
-		txHash = append(txHash, t.Hash())
-	}
-	txRoot, err := common.ComputeMerkleRoot(txHash)
-	if err != nil {
-		return nil, fmt.Errorf("compute hash root: %s", err)
-	}
+func constructProposalMsgTest(acc *account.Account) *blockProposalMsg {
+	txRoot := common.ComputeMerkleRoot(nil)
 	vbftBlkInfo := &vconfig.VbftBlockInfo{
 		Proposer:           1,
-		LastConfigBlockNum: uint64(12),
+		LastConfigBlockNum: 12,
 		NewChainConfig:     nil,
 	}
 	consensusPayload, err := json.Marshal(vbftBlkInfo)
 	if err != nil {
-		return nil, err
+		return nil
 	}
 	blkHeader := &types.Header{
 		PrevBlockHash:    common.Uint256{},
@@ -68,42 +50,31 @@ func constructProposalMsg(acc *account.Account) (*blockProposalMsg, error) {
 		ConsensusPayload: consensusPayload,
 		SigData:          [][]byte{{}, {}},
 	}
+	hash := blkHeader.Hash()
+	sigdata, _ := signature.Sign(acc, hash[:])
+	blkHeader.SigData[0] = sigdata
 	blk := &Block{
 		Block: &types.Block{
-			Header: blkHeader,
+			Header:       blkHeader,
+			Transactions: nil,
 		},
 		Info: vbftBlkInfo,
 	}
-	blk.Block.Hash()
 	msg := &blockProposalMsg{
 		Block: blk,
 	}
-	emptySig, err := SignMsg(acc, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign empty proposal: %s", err)
-	}
 
-	blk.Block.Transactions = txs
-	sig, err := SignMsg(acc, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign proposal: %s", err)
-	}
-
-	msg.Block.Block.Header.SigData[0] = sig
-	msg.Block.Block.Header.SigData[1] = emptySig
-	return msg, nil
+	return msg
 }
 
 func TestBlockProposalMsgVerify(t *testing.T) {
-	passwd := string("passwordtest")
-	acct := account.Open(account.WALLET_FILENAME, []byte(passwd))
-	acc := acct.GetDefaultAccount()
-	msg, err := constructProposalMsg(acc)
-	if err != nil {
-		t.Errorf("constructProposalMsg failed:%v", err)
+	acc := account.NewAccount("SHA256withECDSA")
+	if acc == nil {
+		t.Error("GetDefaultAccount error: acc is nil")
 		return
 	}
-	err = msg.Verify(&acc.PublicKey)
+	msg := constructProposalMsgTest(acc)
+	err := msg.Verify(acc.PublicKey)
 	if err != nil {
 		t.Errorf("blockPropoaslMsg Verify Failed: %v", err)
 		return
@@ -112,37 +83,32 @@ func TestBlockProposalMsgVerify(t *testing.T) {
 }
 
 func constructEndorseMsg(acc *account.Account, proposal *blockProposalMsg, blkHash common.Uint256) (*blockEndorseMsg, error) {
+	sig, _ := signature.Sign(acc, blkHash[:])
 	msg := &blockEndorseMsg{
 		Endorser:          5,
 		EndorsedProposer:  proposal.Block.getProposer(),
 		BlockNum:          proposal.Block.getBlockNum(),
 		EndorsedBlockHash: blkHash,
 		EndorseForEmpty:   true,
+		EndorserSig:       sig,
 	}
-	sig, err := SignMsg(acc, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign endorse msg: %s", err)
-	}
-	msg.Sig = sig
 	return msg, nil
 }
 
 func TestBlockEndorseMsg(t *testing.T) {
-	passwd := string("passwordtest")
-	acct := account.Open(account.WALLET_FILENAME, []byte(passwd))
-	acc := acct.GetDefaultAccount()
-	block, err := constructProposalMsg(acc)
-	if err != nil {
-		t.Errorf("TestBlockEndorseMsg failed: %v", err)
+	acc := account.NewAccount("SHA256withECDSA")
+	if acc == nil {
+		t.Error("GetDefaultAccount error: acc is nil")
 		return
 	}
+	block := constructProposalMsgTest(acc)
 	blkHash, _ := HashBlock(block.Block)
 	endorsemsg, err := constructEndorseMsg(acc, block, blkHash)
 	if err != nil {
 		t.Errorf("TestBlockEndorseMsg failed: %v", err)
 		return
 	}
-	err = endorsemsg.Verify(&acc.PublicKey)
+	err = endorsemsg.Verify(acc.PublicKey)
 	if err != nil {
 		t.Errorf("TestBlockEndorseMsg Verify failed: %v", err)
 		return
@@ -151,37 +117,32 @@ func TestBlockEndorseMsg(t *testing.T) {
 }
 
 func constructCommitMsg(acc *account.Account, proposal *blockProposalMsg, blkHash common.Uint256) (*blockCommitMsg, error) {
+	sig, _ := signature.Sign(acc, blkHash[:])
 	msg := &blockCommitMsg{
 		Committer:       5,
 		BlockProposer:   proposal.Block.getProposer(),
 		BlockNum:        proposal.Block.getBlockNum(),
 		CommitBlockHash: blkHash,
 		CommitForEmpty:  true,
+		CommitterSig:    sig,
 	}
 
-	sig, err := SignMsg(acc, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign commit msg: %s", err)
-	}
-	msg.Sig = sig
 	return msg, nil
 }
 func TestBlockCommitMsg(t *testing.T) {
-	passwd := string("passwordtest")
-	acct := account.Open(account.WALLET_FILENAME, []byte(passwd))
-	acc := acct.GetDefaultAccount()
-	block, err := constructProposalMsg(acc)
-	if err != nil {
-		t.Errorf("TestBlockCommitMsg failed: %v", err)
+	acc := account.NewAccount("SHA256withECDSA")
+	if acc == nil {
+		t.Error("GetDefaultAccount error: acc is nil")
 		return
 	}
+	block := constructProposalMsgTest(acc)
 	blkHash, _ := HashBlock(block.Block)
 	commitmsg, err := constructCommitMsg(acc, block, blkHash)
 	if err != nil {
 		t.Errorf("TestBlockCommitMsg failed: %v", err)
 		return
 	}
-	err = commitmsg.Verify(&acc.PublicKey)
+	err = commitmsg.Verify(acc.PublicKey)
 	if err != nil {
 		t.Errorf("TestBlockCommitMsg Verify failed: %v", err)
 		return
@@ -192,28 +153,25 @@ func TestBlockCommitMsg(t *testing.T) {
 func constructHandshakeMsg(acc *account.Account) (*peerHandshakeMsg, error) {
 	cc := &vconfig.ChainConfig{}
 	msg := &peerHandshakeMsg{
-		CommittedBlockNumber: uint64(1),
+		CommittedBlockNumber: 1,
 		CommittedBlockHash:   common.Uint256{},
-		CommittedBlockLeader: uint32(3),
+		CommittedBlockLeader: 3,
 		ChainConfig:          cc,
 	}
-	sig, err := SignMsg(acc, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign handshake msg: %s", err)
-	}
-	msg.Sig = sig
 	return msg, nil
 }
 func TestPeerHandshakeMsg(t *testing.T) {
-	passwd := string("passwordtest")
-	acct := account.Open(account.WALLET_FILENAME, []byte(passwd))
-	acc := acct.GetDefaultAccount()
+	acc := account.NewAccount("SHA256withECDSA")
+	if acc == nil {
+		t.Error("GetDefaultAccount error: acc is nil")
+		return
+	}
 	msg, err := constructHandshakeMsg(acc)
 	if err != nil {
 		t.Errorf("constructHandshakeMsg failed: %v", err)
 		return
 	}
-	err = msg.Verify(&acc.PublicKey)
+	err = msg.Verify(acc.PublicKey)
 	if err != nil {
 		t.Errorf("peerHandshakeMsg Verify failed: %v\n", err)
 		return
@@ -229,23 +187,21 @@ func constructHeartbeatMsg(acc *account.Account) (*peerHeartbeatMsg, error) {
 		ChainConfigView:      uint32(1),
 	}
 
-	sig, err := SignMsg(acc, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign heartbeat msg: %s", err)
-	}
-	msg.Sig = sig
 	return msg, nil
 }
 func TestPeerHeartbeatMsg(t *testing.T) {
-	passwd := string("passwordtest")
-	acct := account.Open(account.WALLET_FILENAME, []byte(passwd))
-	acc := acct.GetDefaultAccount()
+
+	acc := account.NewAccount("SHA256withECDSA")
+	if acc == nil {
+		t.Error("GetDefaultAccount error: acc is nil")
+		return
+	}
 	msg, err := constructHeartbeatMsg(acc)
 	if err != nil {
 		t.Errorf("constructHeartbeatMsg failed %v", err)
 		return
 	}
-	err = msg.Verify(&acc.PublicKey)
+	err = msg.Verify(acc.PublicKey)
 	if err != nil {
 		t.Errorf("TestPeerHeartbeatMsg Verify failed %v", err)
 		return
@@ -255,26 +211,24 @@ func TestPeerHeartbeatMsg(t *testing.T) {
 
 func constructBlockInfoFetchMsg(acc *account.Account) (*BlockInfoFetchMsg, error) {
 	msg := &BlockInfoFetchMsg{
-		StartBlockNum: uint64(1),
+		StartBlockNum: 1,
 	}
-	sig, err := SignMsg(acc, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign blockinfo fetch req msg: %s", err)
-	}
-	msg.Sig = sig
+
 	return msg, nil
 }
 
 func TestBlockInfoFetchMsg(t *testing.T) {
-	passwd := string("passwordtest")
-	acct := account.Open(account.WALLET_FILENAME, []byte(passwd))
-	acc := acct.GetDefaultAccount()
+	acc := account.NewAccount("SHA256withECDSA")
+	if acc == nil {
+		t.Error("GetDefaultAccount error: acc is nil")
+		return
+	}
 	msg, err := constructBlockInfoFetchMsg(acc)
 	if err != nil {
 		t.Errorf("constructBlockInfoFetchMsg failed: %v", err)
 		return
 	}
-	err = msg.Verify(&acc.PublicKey)
+	err = msg.Verify(acc.PublicKey)
 	if err != nil {
 		t.Errorf("TestBlockInfoFetchMsg Verify failed %v", err)
 		return
@@ -284,32 +238,29 @@ func TestBlockInfoFetchMsg(t *testing.T) {
 
 func constructBlockInfoFetchRespMsg(acc *account.Account) (*BlockInfoFetchRespMsg, error) {
 	blockInfo := &BlockInfo_{
-		BlockNum: uint64(1),
-		Proposer: uint32(1),
+		BlockNum: 1,
+		Proposer: 1,
 	}
 	var blockInfos []*BlockInfo_
 	blockInfos = append(blockInfos, blockInfo)
 	msg := &BlockInfoFetchRespMsg{
 		Blocks: blockInfos,
 	}
-	sig, err := SignMsg(acc, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign blockinfo fetch rsp msg: %s", err)
-	}
-	msg.Sig = sig
 	return msg, nil
 }
 
 func TestBlockInfoFetchRespMsg(t *testing.T) {
-	passwd := string("passwordtest")
-	acct := account.Open(account.WALLET_FILENAME, []byte(passwd))
-	acc := acct.GetDefaultAccount()
+	acc := account.NewAccount("SHA256withECDSA")
+	if acc == nil {
+		t.Error("GetDefaultAccount error: acc is nil")
+		return
+	}
 	msg, err := constructBlockInfoFetchRespMsg(acc)
 	if err != nil {
 		t.Errorf("constructBlockInfoFetchRespMsg failed: %v", err)
 		return
 	}
-	err = msg.Verify(&acc.PublicKey)
+	err = msg.Verify(acc.PublicKey)
 	if err != nil {
 		t.Errorf("TestBlockInfoFetchRespMsg Verify failed %v", err)
 		return
@@ -319,26 +270,23 @@ func TestBlockInfoFetchRespMsg(t *testing.T) {
 
 func constructBlockFetchMsg(acc *account.Account) (*blockFetchMsg, error) {
 	msg := &blockFetchMsg{
-		BlockNum: uint64(1),
-	}
-	sig, err := SignMsg(acc, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign blockfetch msg: %s", err)
+		BlockNum: 1,
 	}
 
-	msg.Sig = sig
 	return msg, nil
 }
 func TestBlockFetchMsg(t *testing.T) {
-	passwd := string("passwordtest")
-	acct := account.Open(account.WALLET_FILENAME, []byte(passwd))
-	acc := acct.GetDefaultAccount()
+	acc := account.NewAccount("SHA256withECDSA")
+	if acc == nil {
+		t.Error("GetDefaultAccount error: acc is nil")
+		return
+	}
 	msg, err := constructBlockFetchMsg(acc)
 	if err != nil {
 		t.Errorf("constructBlockFetchMsg failed: %v", err)
 		return
 	}
-	err = msg.Verify(&acc.PublicKey)
+	err = msg.Verify(acc.PublicKey)
 	if err != nil {
 		t.Errorf("TestBlockFetchMsg Verify failed %v", err)
 		return
@@ -348,33 +296,27 @@ func TestBlockFetchMsg(t *testing.T) {
 
 func constructBlockFetchRespMsg(acc *account.Account, blk *Block) (*BlockFetchRespMsg, error) {
 	msg := &BlockFetchRespMsg{
-		BlockNumber: uint64(1),
+		BlockNumber: 1,
 		BlockHash:   common.Uint256{},
 		BlockData:   blk,
 	}
-	sig, err := SignMsg(acc, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign blockfetch-rsp msg: %s", err)
-	}
-	msg.Sig = sig
+
 	return msg, nil
 }
 
 func TestBlockFetchRespMsg(t *testing.T) {
-	passwd := string("passwordtest")
-	acct := account.Open(account.WALLET_FILENAME, []byte(passwd))
-	acc := acct.GetDefaultAccount()
-	msg, err := constructProposalMsg(acc)
-	if err != nil {
-		t.Errorf("constructProposalMsg failed:%v", err)
+	acc := account.NewAccount("SHA256withECDSA")
+	if acc == nil {
+		t.Error("GetDefaultAccount error: acc is nil")
 		return
 	}
+	msg := constructProposalMsgTest(acc)
 	respmsg, err := constructBlockFetchRespMsg(acc, msg.Block)
 	if err != nil {
 		t.Errorf("constructBlockFetchMsg failed :%v", err)
 		return
 	}
-	err = respmsg.Verify(&acc.PublicKey)
+	err = respmsg.Verify(acc.PublicKey)
 	if err != nil {
 		t.Errorf("blockFetchRespMsg Verify Failed: %v", err)
 		return
@@ -384,26 +326,22 @@ func TestBlockFetchRespMsg(t *testing.T) {
 
 func constructProposalFetchMsg(acc *account.Account) (*proposalFetchMsg, error) {
 	msg := &proposalFetchMsg{
-		BlockNum: uint64(1),
+		BlockNum: 1,
 	}
-	sig, err := SignMsg(acc, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign proposalFetch msg: %s", err)
-	}
-
-	msg.Sig = sig
 	return msg, nil
 }
 func TestProposalFetchMsg(t *testing.T) {
-	passwd := string("passwordtest")
-	acct := account.Open(account.WALLET_FILENAME, []byte(passwd))
-	acc := acct.GetDefaultAccount()
+	acc := account.NewAccount("SHA256withECDSA")
+	if acc == nil {
+		t.Error("GetDefaultAccount error: acc is nil")
+		return
+	}
 	msg, err := constructProposalFetchMsg(acc)
 	if err != nil {
 		t.Errorf("constructProposalFetchMsg failed: %v", err)
 		return
 	}
-	err = msg.Verify(&acc.PublicKey)
+	err = msg.Verify(acc.PublicKey)
 	if err != nil {
 		t.Errorf("TestProposalFetchMsg Verify failed %v", err)
 		return
@@ -412,27 +350,11 @@ func TestProposalFetchMsg(t *testing.T) {
 }
 
 func constructBlock() (*Block, error) {
-	bookKeepingPayload := &payload.BookKeeping{
-		Nonce: uint64(time.Now().UnixNano()),
-	}
-	tx := &types.Transaction{
-		TxType:     types.BookKeeping,
-		Payload:    bookKeepingPayload,
-		Attributes: []*types.TxAttribute{},
-	}
 	var txs []*types.Transaction
-	txs = append(txs, tx)
-	txHash := []common.Uint256{}
-	for _, t := range txs {
-		txHash = append(txHash, t.Hash())
-	}
-	txRoot, err := common.ComputeMerkleRoot(txHash)
-	if err != nil {
-		return nil, fmt.Errorf("compute hash root: %s", err)
-	}
+	txRoot := common.ComputeMerkleRoot(nil)
 	vbftBlkInfo := &vconfig.VbftBlockInfo{
 		Proposer:           1,
-		LastConfigBlockNum: uint64(1),
+		LastConfigBlockNum: 1,
 		NewChainConfig:     nil,
 	}
 	consensusPayload, err := json.Marshal(vbftBlkInfo)
@@ -450,8 +372,8 @@ func constructBlock() (*Block, error) {
 	}
 	blk := &Block{
 		Block: &types.Block{
-			Header: blkHeader,
-			Transactions:txs,
+			Header:       blkHeader,
+			Transactions: txs,
 		},
 		Info: vbftBlkInfo,
 	}
@@ -466,7 +388,7 @@ func TestBlockFetchRespMsgSerialize(t *testing.T) {
 		return
 	}
 	blockfetchrespmsg := &BlockFetchRespMsg{
-		BlockNumber: uint64(1),
+		BlockNumber: 1,
 		BlockHash:   common.Uint256{},
 		BlockData:   blk,
 	}
@@ -485,7 +407,7 @@ func TestBlockFetchRespMsgDeserialize(t *testing.T) {
 		return
 	}
 	blockfetchrespmsg := &BlockFetchRespMsg{
-		BlockNumber: uint64(1),
+		BlockNumber: 1,
 		BlockHash:   common.Uint256{},
 		BlockData:   blk,
 	}

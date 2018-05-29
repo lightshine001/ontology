@@ -19,14 +19,14 @@
 package neovm
 
 import (
-	vm "github.com/ontio/ontology/vm/neovm"
-	"github.com/ontio/ontology/errors"
-	"github.com/ontio/ontology/common"
-	"github.com/ontio/ontology/core/types"
 	"github.com/ontio/ontology-crypto/keypair"
-	"github.com/ontio/ontology/smartcontract/event"
-	scommon "github.com/ontio/ontology/smartcontract/common"
+	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/core/signature"
+	"github.com/ontio/ontology/core/types"
+	"github.com/ontio/ontology/errors"
+	scommon "github.com/ontio/ontology/smartcontract/common"
+	"github.com/ontio/ontology/smartcontract/event"
+	vm "github.com/ontio/ontology/vm/neovm"
 )
 
 // HeaderGetNextConsensus put current block time to vm stack
@@ -47,7 +47,8 @@ func RuntimeCheckWitness(service *NeoVmService, engine *vm.ExecutionEngine) erro
 		}
 		result = service.ContextRef.CheckWitness(address)
 	} else {
-		pk, err := keypair.DeserializePublicKey(data); if err != nil {
+		pk, err := keypair.DeserializePublicKey(data)
+		if err != nil {
 			return errors.NewDetailErr(err, errors.ErrNoCode, "[RuntimeCheckWitness] data invalid.")
 		}
 		result = service.ContextRef.CheckWitness(types.AddressFromPubKey(pk))
@@ -61,7 +62,7 @@ func RuntimeCheckWitness(service *NeoVmService, engine *vm.ExecutionEngine) erro
 func RuntimeNotify(service *NeoVmService, engine *vm.ExecutionEngine) error {
 	item := vm.PopStackItem(engine)
 	context := service.ContextRef.CurrentContext()
-	service.Notifications = append(service.Notifications, &event.NotifyEventInfo{TxHash: service.Tx.Hash(), ContractAddress: context.ContractAddress, States: scommon.ConvertNeoVmTypeHexString(item)})
+	service.Notifications = append(service.Notifications, &event.NotifyEventInfo{ContractAddress: context.ContractAddress, States: scommon.ConvertNeoVmTypeHexString(item)})
 	return nil
 }
 
@@ -70,18 +71,18 @@ func RuntimeLog(service *NeoVmService, engine *vm.ExecutionEngine) error {
 	item := vm.PopByteArray(engine)
 	context := service.ContextRef.CurrentContext()
 	txHash := service.Tx.Hash()
-	event.PushSmartCodeEvent(txHash, 0, event.EVENT_LOG, &event.LogEventArgs{TxHash:txHash, ContractAddress: context.ContractAddress, Message: string(item)})
+	event.PushSmartCodeEvent(txHash, 0, event.EVENT_LOG, &event.LogEventArgs{TxHash: txHash, ContractAddress: context.ContractAddress, Message: string(item)})
 	return nil
 }
 
 // RuntimeCheckSig verify whether authorization legal
 func RuntimeCheckSig(service *NeoVmService, engine *vm.ExecutionEngine) error {
 	pubKey := vm.PopByteArray(engine)
+	key, err := keypair.DeserializePublicKey(pubKey)
+	if err != nil {
+		return err
+	}
 	data := vm.PopByteArray(engine)
 	sig := vm.PopByteArray(engine)
-	return signature.Verify(pubKey, data, sig)
+	return signature.Verify(key, data, sig)
 }
-
-
-
-

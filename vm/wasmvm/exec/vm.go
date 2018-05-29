@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2018 The ontology Authors
+ * This file is part of The ontology library.
+ *
+ * The ontology is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The ontology is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with The ontology.  If not, see <http://www.gnu.org/licenses/>.
+ */
 // Copyright 2017 The go-interpreter Authors.  All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
@@ -13,11 +30,12 @@ import (
 	"math"
 
 	"github.com/ontio/ontology/common"
+	"github.com/ontio/ontology/smartcontract/types"
+	"github.com/ontio/ontology/vm/wasmvm/disasm"
 	"github.com/ontio/ontology/vm/wasmvm/exec/internal/compile"
 	"github.com/ontio/ontology/vm/wasmvm/memory"
 	"github.com/ontio/ontology/vm/wasmvm/wasm"
 	ops "github.com/ontio/ontology/vm/wasmvm/wasm/operators"
-	"github.com/ontio/ontology/vm/wasmvm/disasm"
 )
 
 var (
@@ -83,8 +101,9 @@ type VM struct {
 	envCall *EnvCall
 	//store a engine pointer
 	ContractAddress common.Address
-	Caller   common.Address
-	Engine   *ExecutionEngine
+	Caller          common.Address
+	Engine          *ExecutionEngine
+	VMCode          types.VmCode
 }
 
 // As per the WebAssembly spec: https://github.com/WebAssembly/design/blob/27ac254c854994103c24834a994be16f74f54186/Semantics.md#linear-memory
@@ -146,6 +165,8 @@ func (vm *VM) RestoreCtx() bool {
 	return true
 }
 
+//SetMessage
+//for further extension
 //support EOS like message
 func (vm *VM) SetMessage(message []interface{}) {
 	if message != nil {
@@ -156,6 +177,8 @@ func (vm *VM) SetMessage(message []interface{}) {
 	}
 }
 
+//GetMessageBytes
+//for further extension
 func (vm *VM) GetMessageBytes() ([]byte, error) {
 	if vm.envCall.Message == nil || len(vm.envCall.Message) == 0 {
 		return nil, nil
@@ -442,7 +465,9 @@ outer:
 	return 0
 }
 
+//CallContract
 //start a new vm
+//this method is replaced with wasm_service :callContract
 func (vm *VM) CallContract(caller common.Address, contractAddress common.Address, module *wasm.Module, actionName []byte, arg []byte) (uint64, error) {
 
 	methodName := CONTRACT_METHOD_NAME
@@ -510,15 +535,12 @@ func (vm *VM) loadModule(module *wasm.Module) error {
 	} else if len(module.LinearMemoryIndexSpace) > 0 {
 		//add imported memory ,all mem access will be on the imported mem
 		vm.memory.Memory = module.LinearMemoryIndexSpace[0]
-		//copy(vm.memory, module.LinearMemoryIndexSpace[0])
 	}
 
 	//give a default memory even if no memory section exist in wasm file
 	if vm.memory.Memory == nil {
 		vm.memory.Memory = make([]byte, 1*wasmPageSize)
 	}
-
-	//vm.memory.AllocedMemIdex = -1 //init the allocated memory offset
 
 	vm.memory.MemPoints = make(map[uint64]*memory.TypeLength) //init the pointer map
 
@@ -556,12 +578,9 @@ func (vm *VM) loadModule(module *wasm.Module) error {
 		vm.memory.PointedMemIndex = (len(vm.memory.Memory) + tmpIdx) / 2
 	} else {
 		//default pointed memory
-		//todo define the magic number
 		vm.memory.AllocedMemIdex = -1
 		vm.memory.PointedMemIndex = len(vm.memory.Memory) / 2 //the second half memory is reserved for the pointed objects,string,array,structs
 	}
-
-	//vm.memory.AllocedMemIdex = -1 //init the allocated memory offset
 
 	vm.compiledFuncs = make([]compiledFunction, len(module.FunctionIndexSpace))
 	vm.globals = make([]uint64, len(module.GlobalIndexSpace))

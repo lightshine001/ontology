@@ -19,240 +19,183 @@
 package cmd
 
 import (
-	"errors"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"math/big"
-	"os"
-	"time"
-
-	"github.com/ontio/ontology/account"
+	cmdcom "github.com/ontio/ontology/cmd/common"
 	"github.com/ontio/ontology/cmd/utils"
 	"github.com/ontio/ontology/common"
-	"github.com/ontio/ontology/common/password"
 	"github.com/ontio/ontology/smartcontract/types"
 	"github.com/urfave/cli"
+	"io/ioutil"
+	"strings"
 )
 
 var (
 	ContractCommand = cli.Command{
-		Name:         "contract",
-		Action:       utils.MigrateFlags(contractCommand),
-		Usage:        "Deploy or invoke smart contract",
-		ArgsUsage:    " ",
-		OnUsageError: contractUsageError,
-		Description:  `Deploy or invoke smart contract`,
+		Name:        "contract",
+		Action:      cli.ShowSubcommandHelp,
+		Usage:       "Deploy or invoke smart contract",
+		ArgsUsage:   " ",
+		Description: `Deploy or invoke smart contract`,
 		Subcommands: []cli.Command{
 			{
-				Action:       utils.MigrateFlags(invokeContract),
-				Name:         "invoke",
-				OnUsageError: invokeUsageError,
-				Usage:        "Invoke a deployed smart contract",
-				ArgsUsage:    " ",
+				Action:    deployContract,
+				Name:      "deploy",
+				Usage:     "Deploy a smart contract to ontolgoy",
+				ArgsUsage: " ",
 				Flags: []cli.Flag{
-					utils.ContractAddrFlag,
-					utils.ContractParamsFlag,
-					utils.AccountFileFlag,
-					utils.AccountPassFlag,
-				},
-				Description: ``,
-			},
-			{
-				Action:       utils.MigrateFlags(deployContract),
-				OnUsageError: deployUsageError,
-				Name:         "deploy",
-				Usage:        "Deploy a smart contract to the chain",
-				ArgsUsage:    " ",
-				Flags: []cli.Flag{
-					utils.ContractVmTypeFlag,
+					utils.TransactionGasPriceFlag,
+					utils.TransactionGasLimitFlag,
 					utils.ContractStorageFlag,
-					utils.ContractCodeFlag,
+					utils.ContractCodeFileFlag,
 					utils.ContractNameFlag,
 					utils.ContractVersionFlag,
 					utils.ContractAuthorFlag,
 					utils.ContractEmailFlag,
 					utils.ContractDescFlag,
-					utils.AccountFileFlag,
-					utils.AccountPassFlag,
+					utils.WalletFileFlag,
+					utils.AccountAddressFlag,
 				},
-				Description: ``,
+			},
+			{
+				Action:    invokeContract,
+				Name:      "invoke",
+				Usage:     "Invoke smart contract",
+				ArgsUsage: " ",
+				Flags: []cli.Flag{
+					utils.TransactionGasPriceFlag,
+					utils.TransactionGasLimitFlag,
+					utils.ContractAddrFlag,
+					utils.ContractParamsFlag,
+					utils.ContractVersionFlag,
+					utils.ContractPrepareInvokeFlag,
+					utils.ContranctReturnTypeFlag,
+					utils.WalletFileFlag,
+					utils.AccountAddressFlag,
+				},
 			},
 		},
 	}
 )
 
-func contractCommand(ctx *cli.Context) error {
-	cli.ShowSubcommandHelp(ctx)
-	return nil
-}
-
-func contractUsageError(context *cli.Context, err error, isSubcommand bool) error {
-	fmt.Println(err.Error(), "\n")
-	cli.ShowSubcommandHelp(context)
-	return nil
-}
-
-func invokeUsageError(context *cli.Context, err error, isSubcommand bool) error {
-	fmt.Println(err.Error(), "\n")
-	cli.ShowSubcommandHelp(context)
-	return nil
-}
-
-func invokeContract(ctx *cli.Context) error {
-	if !ctx.IsSet(utils.ContractAddrFlag.Name) || !ctx.IsSet(utils.ContractParamsFlag.Name) {
-		fmt.Println("Missing argument.\n")
+func deployContract(ctx *cli.Context) error {
+	if !ctx.IsSet(utils.GetFlagName(utils.ContractCodeFileFlag)) ||
+		!ctx.IsSet(utils.GetFlagName(utils.ContractNameFlag)) {
+		fmt.Errorf("Missing code or name argument\n")
 		cli.ShowSubcommandHelp(ctx)
 		return nil
 	}
 
-	var wallet = account.WALLET_FILENAME
-	if ctx.IsSet("file") {
-		wallet = ctx.String("file")
-	}
-	var passwd []byte
-	var err error
-	if ctx.IsSet("password") {
-		passwd = []byte(ctx.String("password"))
-	} else {
-		passwd, err = password.GetAccountPassword()
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return errors.New("input password error")
-		}
-	}
-	client := account.Open(wallet, passwd)
-	for i, _ := range passwd {
-		passwd[i] = 0
-	}
-	if client == nil {
-		fmt.Println("Can't get local account")
-		return errors.New("Get client is nil")
-	}
-
-	acct := client.GetDefaultAccount()
-	if acct == nil {
-		fmt.Println("Can't get default account.")
-		return errors.New("Deploy contract failed.")
-	}
-
-	contractAddr := ctx.String(utils.ContractAddrFlag.Name)
-	params := ctx.String(utils.ContractParamsFlag.Name)
-	if "" == contractAddr {
-		fmt.Println("contract address does not allow empty")
-	}
-
-	addr, err := common.AddressFromBase58(contractAddr)
+	signer, err := cmdcom.GetAccount(ctx)
 	if err != nil {
-		fmt.Println("Parase contract address error, please use correct smart contract address")
-		return err
+		return fmt.Errorf("Get signer account error:%s", err)
 	}
 
-	txHash, err := ontSdk.Rpc.InvokeNeoVMSmartContract(acct, new(big.Int), addr, []interface{}{params})
+	store := ctx.Bool(utils.GetFlagName(utils.ContractStorageFlag))
+	codeFile := ctx.String(utils.GetFlagName(utils.ContractCodeFileFlag))
+	if "" == codeFile {
+		return fmt.Errorf("Please specific code file")
+	}
+	codeStr, err := ioutil.ReadFile(codeFile)
 	if err != nil {
-		fmt.Printf("InvokeSmartContract InvokeNeoVMSmartContract error:%s", err)
-		return err
-	} else {
-		fmt.Printf("invoke transaction hash:%s", common.ToHexString(txHash[:]))
+		return fmt.Errorf("Read code:%s error:%s", codeFile, err)
 	}
 
-	//WaitForGenerateBlock
-	_, err = ontSdk.Rpc.WaitForGenerateBlock(30*time.Second, 1)
+	name := ctx.String(utils.GetFlagName(utils.ContractNameFlag))
+	version := ctx.Int(utils.GetFlagName(utils.ContractVersionFlag))
+	author := ctx.String(utils.GetFlagName(utils.ContractAuthorFlag))
+	email := ctx.String(utils.GetFlagName(utils.ContractEmailFlag))
+	desc := ctx.String(utils.GetFlagName(utils.ContractDescFlag))
+	code := strings.TrimSpace(string(codeStr))
+	gasPrice := ctx.Uint64(utils.GetFlagName(utils.TransactionGasPriceFlag))
+	gasLimit := ctx.Uint64(utils.GetFlagName(utils.TransactionGasLimitFlag))
+	vmType := types.NEOVM
+	cversion := fmt.Sprintf("%s", version)
+
+	txHash, err := utils.DeployContract(gasPrice, gasLimit, signer, vmType, store, code, name, cversion, author, email, desc)
 	if err != nil {
-		fmt.Printf("InvokeSmartContract WaitForGenerateBlock error:%s", err)
+		return fmt.Errorf("DeployContract error:%s", err)
 	}
-	return err
-}
-
-func getVmType(vmType string) types.VmType {
-	switch vmType {
-	case "neovm":
-		return types.NEOVM
-	case "wasm":
-		return types.WASMVM
-	default:
-		return types.NEOVM
-	}
-}
-
-func deployUsageError(context *cli.Context, err error, isSubcommand bool) error {
-	fmt.Println(err.Error(), "\n")
-	cli.ShowSubcommandHelp(context)
+	address := utils.GetContractAddress(string(code), vmType)
+	fmt.Printf("Deploy contract:\n")
+	fmt.Printf("  Contract Address:%x\n", address[:])
+	fmt.Printf("  TxHash:%s\n", txHash)
+	fmt.Printf("\nTip:\n")
+	fmt.Printf("  Using './ontology info status %s' to query transaction status\n", txHash)
 	return nil
 }
 
-func deployContract(ctx *cli.Context) error {
-	if !ctx.IsSet(utils.ContractStorageFlag.Name) || !ctx.IsSet(utils.ContractVmTypeFlag.Name) ||
-		!ctx.IsSet(utils.ContractCodeFlag.Name) || !ctx.IsSet(utils.ContractNameFlag.Name) ||
-		!ctx.IsSet(utils.ContractVersionFlag.Name) || !ctx.IsSet(utils.ContractAuthorFlag.Name) ||
-		!ctx.IsSet(utils.ContractEmailFlag.Name) || !ctx.IsSet(utils.ContractDescFlag.Name) {
-		fmt.Println("Missing argument.\n")
+func invokeContract(ctx *cli.Context) error {
+	if !ctx.IsSet(utils.GetFlagName(utils.ContractAddrFlag)) {
+		fmt.Errorf("Missing contract address argument.\n")
 		cli.ShowSubcommandHelp(ctx)
-		return errors.New("Parameter is err")
+		return nil
+	}
+	contractAddrStr := ctx.String(utils.GetFlagName(utils.ContractAddrFlag))
+	addrData, err := hex.DecodeString(contractAddrStr)
+	if err != nil {
+		return fmt.Errorf("Invalid contract address error:%s", err)
+	}
+	contractAddr, err := common.AddressParseFromBytes(addrData)
+	if err != nil {
+		return fmt.Errorf("Invalid contract address error:%s", err)
 	}
 
-	var wallet = account.WALLET_FILENAME
-	if ctx.IsSet("file") {
-		wallet = ctx.String("file")
+	cversion := byte(ctx.Int(utils.GetFlagName(utils.ContractVersionFlag)))
+	paramsStr := ctx.String(utils.GetFlagName(utils.ContractParamsFlag))
+	params, err := utils.ParseParams(paramsStr)
+	if err != nil {
+		return fmt.Errorf("parseParams error:%s", err)
 	}
-	var passwd []byte
-	var err error
-	if ctx.IsSet("password") {
-		passwd = []byte(ctx.String("password"))
-	} else {
-		passwd, err = password.GetAccountPassword()
+
+	paramData, _ := json.Marshal(params)
+	fmt.Printf("Invoke:%s Params:%s\n", contractAddr.ToBase58(), paramData)
+
+	if ctx.IsSet(utils.GetFlagName(utils.ContractPrepareInvokeFlag)) {
+		preResult, err := utils.PrepareInvokeNeoVMContract(cversion, contractAddr, params)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return errors.New("input password error")
+			return fmt.Errorf("PrepareInvokeNeoVMSmartContact error:%s", err)
 		}
-	}
-	client := account.Open(wallet, passwd)
-	for i, _ := range passwd {
-		passwd[i] = 0
-	}
-	if nil == client {
-		fmt.Println("Error load wallet file", wallet)
-		return errors.New("Get client return nil")
-	}
+		if preResult.State == 0 {
+			return fmt.Errorf("Contract invoke failed\n")
+		}
+		fmt.Printf("Contract invoke successfully\n")
+		fmt.Printf("Gas consumed:%d\n", preResult.Gas)
 
-	acct := client.GetDefaultAccount()
-	if acct == nil {
-		fmt.Println("Can't get default account.")
-		return errors.New("Deploy contract failed.")
+		rawReturnTypes := ctx.String(utils.GetFlagName(utils.ContranctReturnTypeFlag))
+		if rawReturnTypes == "" {
+			fmt.Printf("Return:%s (raw value)\n", preResult.Result)
+			return nil
+		}
+		values, err := utils.ParseReturnValue(preResult.Result, rawReturnTypes)
+		if err != nil {
+			return fmt.Errorf("parseReturnValue values:%+v types:%s error:%s", values, rawReturnTypes, err)
+		}
+		switch len(values) {
+		case 0:
+			fmt.Printf("Return: nil\n")
+		case 1:
+			fmt.Printf("Return:%+v\n", values[0])
+		default:
+			fmt.Printf("Return:%+v\n", values)
+		}
+		return nil
 	}
-
-	store := ctx.Bool(utils.ContractStorageFlag.Name)
-	vmType := getVmType(ctx.String(utils.ContractVmTypeFlag.Name))
-
-	codeDir := ctx.String(utils.ContractCodeFlag.Name)
-	if "" == codeDir {
-		fmt.Println("Code dir is error, value does not allow null")
-		return errors.New("Smart contract code dir does not allow empty")
-	}
-	code, err := ioutil.ReadFile(codeDir)
+	signer, err := cmdcom.GetAccount(ctx)
 	if err != nil {
-		fmt.Printf("Error in read file,%s", err.Error())
-		return err
+		return fmt.Errorf("Get signer account error:%s", err)
 	}
+	gasPrice := ctx.Uint64(utils.GetFlagName(utils.TransactionGasPriceFlag))
+	gasLimit := ctx.Uint64(utils.GetFlagName(utils.TransactionGasLimitFlag))
 
-	name := ctx.String(utils.ContractNameFlag.Name)
-	version := ctx.String(utils.ContractVersionFlag.Name)
-	author := ctx.String(utils.ContractAuthorFlag.Name)
-	email := ctx.String(utils.ContractEmailFlag.Name)
-	desc := ctx.String(utils.ContractDescFlag.Name)
-
-	trHash, err := ontSdk.Rpc.DeploySmartContract(acct, vmType, store, fmt.Sprintf("%s", code), name, version, author, email, desc)
+	txHash, err := utils.InvokeNeoVMContract(gasPrice, gasLimit, signer, cversion, contractAddr, params)
 	if err != nil {
-		fmt.Printf("Deploy smart error: %s", err.Error())
-		return err
-	}
-	//WaitForGenerateBlock
-	_, err = ontSdk.Rpc.WaitForGenerateBlock(30*time.Second, 1)
-	if err != nil {
-		fmt.Printf("DeploySmartContract WaitForGenerateBlock error:%s", err.Error())
-		return err
-	} else {
-		fmt.Printf("Deploy smartContract transaction hash: %s\n", common.ToHexString(trHash[:]))
+		return fmt.Errorf("Invoke NeoVM contract error:%s", err)
 	}
 
+	fmt.Printf("TxHash:%s\n", txHash)
+	fmt.Printf("\nTip:\n")
+	fmt.Printf("  Using './ontology info status %s' to query transaction status\n", txHash)
 	return nil
 }

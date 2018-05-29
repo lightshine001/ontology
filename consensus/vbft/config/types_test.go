@@ -26,7 +26,7 @@ import (
 )
 
 func TestStringID(t *testing.T) {
-	nodeid := "1202033fa46285732b97db9ee1929cf171628f868a467d8564d8e075b2434045b1aeef00000000000000000000000000000000000000000000000000000000000000"
+	nodeid := "120202890c587f4e4a6a98b455248eabac04b733580cfe5f11acd648c675543dfbb926"
 	nodeID, err := StringID(nodeid)
 	if err != nil {
 		t.Errorf("test failed: %v", err)
@@ -36,7 +36,7 @@ func TestStringID(t *testing.T) {
 }
 
 func TestPubkeyID(t *testing.T) {
-	bookkeeper := "1202027df359dff69eea8dd7d807b669dd9635292b1aae97d03ed32cb36ff30fb7e4d9"
+	bookkeeper := "120202c924ed1a67fd1719020ce599d723d09d48362376836e04b0be72dfe825e24d81"
 	pubKey, err := hex.DecodeString(bookkeeper)
 	if err != nil {
 		t.Errorf("DecodeString failed: %v", err)
@@ -45,7 +45,7 @@ func TestPubkeyID(t *testing.T) {
 	if err != nil {
 		t.Errorf("DeserializePublicKey failed: %v", err)
 	}
-	nodeID, err := PubkeyID(&k)
+	nodeID, err := PubkeyID(k)
 	if err != nil {
 		t.Errorf("PubkeyID failed: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestPubkey(t *testing.T) {
 	if err != nil {
 		t.Errorf("DeserializePublicKey failed: %v", err)
 	}
-	nodeID, err := PubkeyID(&k)
+	nodeID, err := PubkeyID(k)
 	if err != nil {
 		t.Errorf("PubkeyID failed: %v", err)
 	}

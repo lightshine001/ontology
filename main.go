@@ -19,26 +19,29 @@
 package main
 
 import (
-	"errors"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/signal"
 	"runtime"
-	"sort"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/ontio/ontology-crypto/keypair"
+	"github.com/ontio/ontology-eventbus/actor"
 	"github.com/ontio/ontology/account"
 	"github.com/ontio/ontology/cmd"
+	"github.com/ontio/ontology/cmd/abi"
+	cmdcom "github.com/ontio/ontology/cmd/common"
+	cmdsvr "github.com/ontio/ontology/cmd/server"
+	cmdsvrcom "github.com/ontio/ontology/cmd/server/common"
 	"github.com/ontio/ontology/cmd/utils"
+	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/config"
 	"github.com/ontio/ontology/common/log"
-	"github.com/ontio/ontology/common/password"
 	"github.com/ontio/ontology/consensus"
 	"github.com/ontio/ontology/core/ledger"
-	ldgactor "github.com/ontio/ontology/core/ledger/actor"
 	"github.com/ontio/ontology/events"
 	hserver "github.com/ontio/ontology/http/base/actor"
 	"github.com/ontio/ontology/http/jsonrpc"
@@ -49,198 +52,334 @@ import (
 	"github.com/ontio/ontology/p2pserver"
 	netreqactor "github.com/ontio/ontology/p2pserver/actor/req"
 	p2pactor "github.com/ontio/ontology/p2pserver/actor/server"
-	nettypes "github.com/ontio/ontology/p2pserver/common"
 	"github.com/ontio/ontology/txnpool"
 	tc "github.com/ontio/ontology/txnpool/common"
-	"github.com/ontio/ontology/validator/statefull"
+	"github.com/ontio/ontology/txnpool/proc"
+	"github.com/ontio/ontology/validator/stateful"
 	"github.com/ontio/ontology/validator/stateless"
 	"github.com/urfave/cli"
 )
 
-const (
-	DefaultMultiCoreNum = 4
-)
-
-func init() {
-	log.Init(log.PATH, log.Stdout)
-	//cmd.HelpUsage()
-	// Todo: If the actor bus uses a different log lib, remove it
-
-	var coreNum int
-	if config.Parameters.MultiCoreNum > DefaultMultiCoreNum {
-		coreNum = int(config.Parameters.MultiCoreNum)
-	} else {
-		coreNum = DefaultMultiCoreNum
-	}
-	log.Debug("The Core number is ", coreNum)
-	runtime.GOMAXPROCS(coreNum)
-}
-
 func setupAPP() *cli.App {
 	app := cli.NewApp()
 	app.Usage = "Ontology CLI"
-	app.Action = ontMain
-	app.Version = "0.7.0"
+	app.Action = startOntology
+	app.Version = "0.8.0"
 	app.Copyright = "Copyright in 2018 The Ontology Authors"
 	app.Commands = []cli.Command{
 		cmd.AccountCommand,
 		cmd.InfoCommand,
 		cmd.AssetCommand,
-		cmd.SettingCommand,
 		cmd.ContractCommand,
 	}
 	app.Flags = []cli.Flag{
-		utils.AccountFileFlag,
+		//common setting
+		utils.ConfigFlag,
+		utils.LogLevelFlag,
+		utils.DisableEventLogFlag,
+		//account setting
+		utils.WalletFileFlag,
+		utils.AccountAddressFlag,
 		utils.AccountPassFlag,
-		utils.ConfigUsedFlag,
+		//consensus setting
+		utils.DisableConsensusFlag,
+		utils.MaxTxInBlockFlag,
+		utils.TransactionGasPriceFlag,
+		utils.TransactionGasLimitFlag,
+		//p2p setting
+		utils.NodePortFlag,
+		utils.ConsensusPortFlag,
+		utils.DualPortSupportFlag,
+		//test mode setting
+		utils.EnableTestModeFlag,
+		utils.TestModeGenBlockTimeFlag,
+		//rpc setting
+		utils.RPCDisabledFlag,
+		utils.RPCPortFlag,
+		utils.RPCLocalEnableFlag,
+		utils.RPCLocalProtFlag,
+		//rest setting
+		utils.RestfulEnableFlag,
+		utils.RestfulPortFlag,
+		//ws setting
+		utils.WsEnabledFlag,
+		utils.WsPortFlag,
+		//cli setting
+		utils.CliEnableRpcFlag,
+		utils.CliRpcPortFlag,
 	}
-
+	app.Before = func(context *cli.Context) error {
+		runtime.GOMAXPROCS(runtime.NumCPU())
+		return nil
+	}
 	return app
 }
 
 func main() {
-	defer func() {
-		if p := recover(); p != nil {
-			if str, ok := p.(string); ok {
-				log.Warn("Leave gracefully. ", errors.New(str))
-			}
-		}
-	}()
-
 	if err := setupAPP().Run(os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func ontMain(ctx *cli.Context) {
-	var acct *account.Account
-	var err error
+func startOntology(ctx *cli.Context) {
+	initLog(ctx)
 
-	log.Info("Node version: ", config.Version)
-	consensusType := strings.ToLower(config.Parameters.ConsensusType)
-	if consensusType == "dbft" && len(config.Parameters.Bookkeepers) < account.DEFAULT_BOOKKEEPER_COUNT {
-		log.Fatal("With dbft consensus type, at least ", account.DEFAULT_BOOKKEEPER_COUNT, " Bookkeepers should be set in config.json")
-		os.Exit(1)
-	}
-
-	log.Info("0. Open the account")
-	var pwd []byte = nil
-	if ctx.IsSet("password") {
-		pwd = []byte(ctx.String("password"))
-	} else {
-		pwd, err = password.GetAccountPassword()
-		if err != nil {
-			log.Fatal("Password error")
-			os.Exit(1)
-		}
-	}
-
-	wallet := ctx.GlobalString("file")
-	client := account.Open(wallet, pwd)
-	if client == nil {
-		log.Fatal("Can't get local account.")
-		os.Exit(1)
-	}
-	acct = client.GetDefaultAccount()
-	if acct == nil {
-		log.Fatal("can not get default account")
-		os.Exit(1)
-	}
-	log.Debug("The Node's PublicKey ", acct.PublicKey)
-	defBookkeepers, err := client.GetBookkeepers()
-	sort.Sort(keypair.NewPublicList(defBookkeepers))
+	_, err := initConfig(ctx)
 	if err != nil {
-		log.Fatalf("GetBookkeepers error:%s", err)
-		os.Exit(1)
+		log.Errorf("initConfig error:%s", err)
+		return
 	}
-	//Init event hub
-	events.Init()
+	acc, err := initAccount(ctx)
+	if err != nil {
+		log.Errorf("initWallet error:%s", err)
+		return
+	}
+	ldg, err := initLedger(ctx)
+	if err != nil {
+		log.Errorf("%s", err)
+		return
+	}
+	defer ldg.Close()
+	txpool, err := initTxPool(ctx)
+	if err != nil {
+		log.Errorf("initTxPool error:%s", err)
+		return
+	}
+	p2pSvr, p2pPid, err := initP2PNode(ctx, acc, txpool)
+	if err != nil {
+		log.Errorf("initP2PNode error:%s", err)
+		return
+	}
+	_, err = initConsensus(ctx, p2pPid, txpool, acc)
+	if err != nil {
+		log.Errorf("initConsensus error:%s", err)
+		return
+	}
+	err = initRpc(ctx)
+	if err != nil {
+		log.Errorf("initRpc error:%s", err)
+		return
+	}
+	err = initLocalRpc(ctx)
+	if err != nil {
+		log.Errorf("initLocalRpc error:%s", err)
+		return
+	}
+	initRestful(ctx)
+	initWs(ctx)
+	initNodeInfo(ctx, p2pSvr)
+	initCliSvr(ctx, acc)
 
-	log.Info("1. Loading the Ledger")
+	go logCurrBlockHeight()
+	waitToExit()
+}
+
+func initLog(ctx *cli.Context) {
+	//init log module
+	logLevel := ctx.GlobalInt(utils.GetFlagName(utils.LogLevelFlag))
+	log.InitLog(logLevel, log.PATH, log.Stdout)
+}
+
+func initConfig(ctx *cli.Context) (*config.OntologyConfig, error) {
+	//init ontology config from cli
+	cfg, err := cmd.SetOntologyConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	log.Infof("Config init success")
+	return cfg, nil
+}
+
+func initAccount(ctx *cli.Context) (*account.Account, error) {
+	walletFile := ctx.GlobalString(utils.GetFlagName(utils.WalletFileFlag))
+	if walletFile == "" {
+		return nil, fmt.Errorf("Please config wallet file using --wallet flag")
+	}
+	if !common.FileExisted(walletFile) {
+		return nil, fmt.Errorf("Cannot find wallet file:%s. Please create wallet first", walletFile)
+	}
+
+	acc, err := cmdcom.GetAccount(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get account error:%s", err)
+	}
+
+	if config.DefConfig.Genesis.ConsensusType == config.CONSENSUS_TYPE_SOLO {
+		curPk := hex.EncodeToString(keypair.SerializePublicKey(acc.PublicKey))
+		config.DefConfig.Genesis.SOLO.Bookkeepers = []string{curPk}
+	}
+
+	log.Infof("Account init success")
+	return acc, nil
+}
+
+func initLedger(ctx *cli.Context) (*ledger.Ledger, error) {
+	events.Init() //Init event hub
+
+	var err error
 	ledger.DefLedger, err = ledger.NewLedger()
 	if err != nil {
-		log.Fatalf("NewLedger error %s", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("NewLedger error:%s", err)
 	}
-	err = ledger.DefLedger.Init(defBookkeepers)
+	bookKeepers, err := config.DefConfig.GetBookkeepers()
 	if err != nil {
-		log.Fatalf("DefLedger.Init error %s", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("GetBookkeepers error:%s", err)
 	}
-	ldgerActor := ldgactor.NewLedgerActor()
-	ledgerPID := ldgerActor.Start()
-	log.Info("3. Start the transaction pool server")
-	// Start the transaction pool server
-	txPoolServer := txnpool.StartTxnPoolServer()
-	if txPoolServer == nil {
-		log.Fatalf("failed to start txn pool server")
-		os.Exit(1)
+	err = ledger.DefLedger.Init(bookKeepers)
+	if err != nil {
+		return nil, fmt.Errorf("Init ledger error:%s", err)
 	}
 
+	log.Infof("Ledger init success")
+	return ledger.DefLedger, nil
+}
+
+func initTxPool(ctx *cli.Context) (*proc.TXPoolServer, error) {
+	txPoolServer, err := txnpool.StartTxnPoolServer()
+	if err != nil {
+		return nil, fmt.Errorf("Init txpool error:%s", err)
+	}
 	stlValidator, _ := stateless.NewValidator("stateless_validator")
 	stlValidator.Register(txPoolServer.GetPID(tc.VerifyRspActor))
-
-	stfValidator, _ := statefull.NewValidator("statefull_validator")
+	stfValidator, _ := stateful.NewValidator("stateful_validator")
 	stfValidator.Register(txPoolServer.GetPID(tc.VerifyRspActor))
 
-	log.Info("4. Start the P2P networks")
+	hserver.SetTxnPoolPid(txPoolServer.GetPID(tc.TxPoolActor))
+	hserver.SetTxPid(txPoolServer.GetPID(tc.TxActor))
 
-	p2p, err := p2pserver.NewServer(acct)
-	if err != nil {
-		log.Fatalf("p2pserver NewServer error %s", err)
-		os.Exit(1)
+	log.Infof("TxPool init success")
+	return txPoolServer, nil
+}
+
+func initP2PNode(ctx *cli.Context, acc *account.Account, txpoolSvr *proc.TXPoolServer) (*p2pserver.P2PServer, *actor.PID, error) {
+	if config.DefConfig.Genesis.ConsensusType == config.CONSENSUS_TYPE_SOLO {
+		return nil, nil, nil
 	}
+	p2p := p2pserver.NewServer(acc)
+
 	p2pActor := p2pactor.NewP2PActor(p2p)
 	p2pPID, err := p2pActor.Start()
 	if err != nil {
-		log.Fatalf("p2pActor init error %s", err)
-		os.Exit(1)
+		return nil, nil, fmt.Errorf("p2pActor init error %s", err)
 	}
 	p2p.SetPID(p2pPID)
-	err = p2p.Start(true)
+	err = p2p.Start()
 	if err != nil {
-		log.Fatalf("p2p sevice start error %s", err)
-		os.Exit(1)
+		return nil, nil, fmt.Errorf("p2p service start error %s", err)
+	}
+	netreqactor.SetTxnPoolPid(txpoolSvr.GetPID(tc.TxActor))
+	txpoolSvr.RegisterActor(tc.NetActor, p2pPID)
+	hserver.SetNetServerPID(p2pPID)
+	p2p.WaitForPeersStart()
+	log.Infof("P2P node init success")
+	return p2p, p2pPID, nil
+}
+
+func initConsensus(ctx *cli.Context, p2pPid *actor.PID, txpoolSvr *proc.TXPoolServer, acc *account.Account) (consensus.ConsensusService, error) {
+	if !config.DefConfig.Consensus.EnableConsensus {
+		return nil, nil
+	}
+	pool := txpoolSvr.GetPID(tc.TxPoolActor)
+
+	consensusType := strings.ToLower(config.DefConfig.Genesis.ConsensusType)
+	consensusService, err := consensus.NewConsensusService(consensusType, acc, pool, nil, p2pPid)
+	if err != nil {
+		return nil, fmt.Errorf("NewConsensusService:%s error:%s", consensusType, err)
+	}
+	consensusService.Start()
+
+	netreqactor.SetConsensusPid(consensusService.GetPID())
+	hserver.SetConsensusPid(consensusService.GetPID())
+
+	log.Infof("Consensus init success")
+	return consensusService, nil
+}
+
+func initRpc(ctx *cli.Context) error {
+	if !config.DefConfig.Rpc.EnableHttpJsonRpc {
+		return nil
+	}
+	var err error
+	exitCh := make(chan interface{}, 0)
+	go func() {
+		err = jsonrpc.StartRPCServer()
+		close(exitCh)
+	}()
+
+	flag := false
+	select {
+	case <-exitCh:
+		if !flag {
+			return err
+		}
+	case <-time.After(time.Millisecond * 5):
+		flag = true
+	}
+	log.Infof("Rpc init success")
+	return nil
+}
+
+func initLocalRpc(ctx *cli.Context) error {
+	if !ctx.GlobalBool(utils.GetFlagName(utils.RPCLocalEnableFlag)) {
+		return nil
+	}
+	var err error
+	exitCh := make(chan interface{}, 0)
+	go func() {
+		err = localrpc.StartLocalServer()
+		close(exitCh)
+	}()
+
+	flag := false
+	select {
+	case <-exitCh:
+		if !flag {
+			return err
+		}
+	case <-time.After(time.Millisecond * 5):
+		flag = true
 	}
 
-	netreqactor.SetLedgerPid(ledgerPID)
-	netreqactor.SetTxnPoolPid(txPoolServer.GetPID(tc.TxActor))
+	log.Infof("Local rpc init success")
+	return nil
+}
 
-	txPoolServer.RegisterActor(tc.NetActor, p2pPID)
-	hserver.SetNetServerPID(p2pPID)
-	hserver.SetLedgerPid(ledgerPID)
-	hserver.SetTxnPoolPid(txPoolServer.GetPID(tc.TxPoolActor))
-	hserver.SetTxPid(txPoolServer.GetPID(tc.TxActor))
+func initRestful(ctx *cli.Context) {
+	if !ctx.GlobalBool(utils.GetFlagName(utils.RestfulEnableFlag)) {
+		return
+	}
 	go restful.StartServer()
 
-	if consensusType != "vbft" {
-		p2p.WaitForPeersStart()
-		p2p.WaitForSyncBlkFinish()
+	log.Infof("Restful init success")
+}
+
+func initWs(ctx *cli.Context) {
+	if !ctx.GlobalBool(utils.GetFlagName(utils.WsEnabledFlag)) {
+		return
 	}
+	websocket.StartServer()
 
-	if nettypes.SERVICE_NODE_NAME != config.Parameters.NodeType {
-		log.Info("5. Start Consensus Services")
-		pool := txPoolServer.GetPID(tc.TxPoolActor)
-		consensusService, _ := consensus.NewConsensusService(acct, pool, nil, p2pPID)
-		netreqactor.SetConsensusPid(consensusService.GetPID())
-		go consensusService.Start()
-		time.Sleep(5 * time.Second)
-		hserver.SetConsensusPid(consensusService.GetPID())
-		go localrpc.StartLocalServer()
+	log.Infof("Ws init success")
+}
+
+func initNodeInfo(ctx *cli.Context, p2pSvr *p2pserver.P2PServer) {
+	if config.DefConfig.P2PNode.HttpInfoPort == 0 {
+		return
 	}
+	go nodeinfo.StartServer(p2pSvr.GetNetWork())
 
-	log.Info("--Start the RPC interface")
-	go jsonrpc.StartRPCServer()
-	go websocket.StartServer()
-	if config.Parameters.HttpInfoPort > 0 {
-		go nodeinfo.StartServer(p2p.GetNetWork())
+	log.Infof("Nodeinfo init success")
+}
+
+func initCliSvr(ctx *cli.Context, acc *account.Account) {
+	if !config.DefConfig.Cli.EnableCliRpcServer {
+		return
 	}
-
-	go logCurrBlockHeight()
-
-	//等待退出信号
-	waitToExit()
+	cmdsvrcom.DefAccount = acc
+	go cmdsvr.DefCliRpcSvr.Start(config.DefConfig.Cli.CliRpcPort)
+	abi.DefAbiMgr.Init()
+	log.Infof("Cli rpc server init success")
 }
 
 func logCurrBlockHeight() {
@@ -248,7 +387,7 @@ func logCurrBlockHeight() {
 	for {
 		select {
 		case <-ticker.C:
-			log.Infof("BlockHeight = %d", ledger.DefLedger.GetCurrentBlockHeight())
+			log.Infof("CurrentBlockHeight = %d", ledger.DefLedger.GetCurrentBlockHeight())
 			isNeedNewFile := log.CheckIfNeedNewFile()
 			if isNeedNewFile {
 				log.ClosePrintLog()

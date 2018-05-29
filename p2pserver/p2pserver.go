@@ -34,8 +34,8 @@ import (
 	comm "github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/config"
 	"github.com/ontio/ontology/common/log"
+	"github.com/ontio/ontology/core/ledger"
 	"github.com/ontio/ontology/core/types"
-	actor "github.com/ontio/ontology/p2pserver/actor/req"
 	"github.com/ontio/ontology/p2pserver/common"
 	"github.com/ontio/ontology/p2pserver/dht"
 	"github.com/ontio/ontology/p2pserver/message/msg_pack"
@@ -52,6 +52,7 @@ type P2PServer struct {
 	msgRouter *utils.MessageRouter
 	pid       *evtActor.PID
 	blockSync *BlockSyncMgr
+	ledger    *ledger.Ledger
 	ReconnectAddrs
 	quitOnline    chan bool
 	quitHeartBeat chan bool
@@ -67,11 +68,12 @@ type ReconnectAddrs struct {
 }
 
 //NewServer return a new p2pserver according to the pubkey
-func NewServer(acc *account.Account) (*P2PServer, error) {
+func NewServer(acc *account.Account) *P2PServer {
 	n := netserver.NewNetServer(acc.PubKey())
 
 	p := &P2PServer{
 		network: n,
+		ledger:  ledger.DefLedger,
 	}
 	//p.dht = dht.NewDHT()
 
@@ -79,7 +81,7 @@ func NewServer(acc *account.Account) (*P2PServer, error) {
 	p.blockSync = NewBlockSyncMgr(p)
 	p.quitOnline = make(chan bool)
 	p.quitHeartBeat = make(chan bool)
-	return p, nil
+	return p
 }
 
 //GetConnectionCnt return the established connect count
@@ -88,28 +90,30 @@ func (this *P2PServer) GetConnectionCnt() uint32 {
 }
 
 //Start create all services
-func (this *P2PServer) Start(isSync bool) error {
+func (this *P2PServer) Start() error {
 	if this.network != nil {
 		this.network.Start()
+	} else {
+		return errors.New("p2p network invalid")
 	}
 	if this.msgRouter != nil {
 		this.msgRouter.Start()
+	} else {
+		return errors.New("p2p msg router invalid")
 	}
 	go this.keepOnlineService()
 	go this.heartBeatService()
 	go this.blockSync.Start()
-
 	return nil
 }
 
 //Stop halt all service by send signal to channels
-func (this *P2PServer) Stop() error {
+func (this *P2PServer) Stop() {
 	this.network.Halt()
 	this.quitOnline <- true
 	this.quitHeartBeat <- true
 	this.msgRouter.Stop()
 	this.blockSync.Close()
-	return nil
 }
 
 // GetNetWork returns the low level netserver
@@ -128,7 +132,7 @@ func (this *P2PServer) GetVersion() uint32 {
 }
 
 //GetNeighborAddrs return all nbr`s address
-func (this *P2PServer) GetNeighborAddrs() ([]common.PeerAddr, uint64) {
+func (this *P2PServer) GetNeighborAddrs() []common.PeerAddr {
 	return this.network.GetNeighborAddrs()
 }
 
@@ -225,7 +229,6 @@ func (this *P2PServer) OnBlockReceive(block *types.Block) {
 // Todo: remove it if no use
 func (this *P2PServer) GetConnectionState() uint32 {
 	return common.INIT
-	//return this.network.GetState()
 }
 
 //GetTime return lastet contact time
@@ -251,11 +254,7 @@ func (this *P2PServer) blockSyncFinished() bool {
 		return false
 	}
 
-	blockHeight, err := actor.GetCurrentBlockHeight()
-	if err != nil {
-		log.Errorf("P2PServer GetCurrentBlockHeight error:%s", err)
-		return false
-	}
+	blockHeight := this.ledger.GetCurrentBlockHeight()
 
 	for _, v := range peers {
 		if blockHeight < uint32(v.GetHeight()) {
@@ -267,14 +266,14 @@ func (this *P2PServer) blockSyncFinished() bool {
 
 //WaitForSyncBlkFinish compare the height of self and remote peer in loop
 func (this *P2PServer) WaitForSyncBlkFinish() {
-	consensusType := strings.ToLower(config.Parameters.ConsensusType)
+	consensusType := strings.ToLower(config.DefConfig.Genesis.ConsensusType)
 	if consensusType == "solo" {
 		return
 	}
 
 	for {
-		headerHeight, _ := actor.GetCurrentHeaderHeight()
-		currentBlkHeight, _ := actor.GetCurrentBlockHeight()
+		headerHeight := this.ledger.GetCurrentHeaderHeight()
+		currentBlkHeight := this.ledger.GetCurrentBlockHeight()
 		log.Info("WaitForSyncBlkFinish... current block height is ",
 			currentBlkHeight, " ,current header height is ", headerHeight)
 
@@ -288,17 +287,13 @@ func (this *P2PServer) WaitForSyncBlkFinish() {
 
 //WaitForPeersStart check whether enough peer linked in loop
 func (this *P2PServer) WaitForPeersStart() {
-	var periodTime uint
+	periodTime := config.DEFAULT_GEN_BLOCK_TIME / common.UPDATE_RATE_PER_BLOCK
 	for {
 		log.Info("Wait for minimum connection...")
 		if this.reachMinConnection() {
 			break
 		}
-		if config.Parameters.GenBlockTime > config.MIN_GEN_BLOCK_TIME {
-			periodTime = config.Parameters.GenBlockTime / common.UPDATE_RATE_PER_BLOCK
-		} else {
-			periodTime = config.DEFAULT_GEN_BLOCK_TIME / common.UPDATE_RATE_PER_BLOCK
-		}
+
 		<-time.After(time.Second * (time.Duration(periodTime)))
 	}
 }
@@ -308,7 +303,7 @@ func (this *P2PServer) connectSeeds() {
 	if this.reachMinConnection() {
 		return
 	}
-	seedNodes := config.Parameters.SeedList
+	seedNodes := config.DefConfig.Genesis.SeedList
 	for _, nodeAddr := range seedNodes {
 		found := false
 		var p *peer.Peer
@@ -339,7 +334,7 @@ func (this *P2PServer) connectSeeds() {
 
 //reachMinConnection return whether net layer have enough link under different config
 func (this *P2PServer) reachMinConnection() bool {
-	consensusType := strings.ToLower(config.Parameters.ConsensusType)
+	consensusType := strings.ToLower(config.DefConfig.Genesis.ConsensusType)
 	if consensusType == "" {
 		consensusType = "dbft"
 	}
@@ -355,7 +350,7 @@ func (this *P2PServer) reachMinConnection() bool {
 	return int(this.GetConnectionCnt())+1 >= minCount
 }
 
-//reachMinConnection return whether net layer have enough link under different config
+//getNode returns the peer with the id
 func (this *P2PServer) getNode(id uint64) *peer.Peer {
 	return this.network.GetPeer(id)
 }
@@ -438,11 +433,7 @@ func (this *P2PServer) reqNbrList(p *peer.Peer) {
 //heartBeat send ping to nbr peers and check the timeout
 func (this *P2PServer) heartBeatService() {
 	var periodTime uint
-	if config.Parameters.GenBlockTime > config.MIN_GEN_BLOCK_TIME {
-		periodTime = config.Parameters.GenBlockTime / common.UPDATE_RATE_PER_BLOCK
-	} else {
-		periodTime = config.DEFAULT_GEN_BLOCK_TIME / common.UPDATE_RATE_PER_BLOCK
-	}
+	periodTime = config.DEFAULT_GEN_BLOCK_TIME / common.UPDATE_RATE_PER_BLOCK
 	t := time.NewTicker(time.Second * (time.Duration(periodTime)))
 
 	for {
@@ -462,11 +453,7 @@ func (this *P2PServer) ping() {
 	peers := this.network.GetNeighbors()
 	for _, p := range peers {
 		if p.GetSyncState() == common.ESTABLISH {
-			height, err := actor.GetCurrentBlockHeight()
-			if err != nil {
-				log.Error("failed get current height! Ping faild!")
-				return
-			}
+			height := this.ledger.GetCurrentBlockHeight()
 			buf, err := msgpack.NewPingMsg(uint64(height))
 			if err != nil {
 				log.Error("failed build a new ping message")
@@ -481,17 +468,13 @@ func (this *P2PServer) ping() {
 func (this *P2PServer) timeout() {
 	peers := this.network.GetNeighbors()
 	var periodTime uint
-	if config.Parameters.GenBlockTime > config.MIN_GEN_BLOCK_TIME {
-		periodTime = config.Parameters.GenBlockTime / common.UPDATE_RATE_PER_BLOCK
-	} else {
-		periodTime = config.DEFAULT_GEN_BLOCK_TIME / common.UPDATE_RATE_PER_BLOCK
-	}
+	periodTime = config.DEFAULT_GEN_BLOCK_TIME / common.UPDATE_RATE_PER_BLOCK
 	for _, p := range peers {
 		if p.GetSyncState() == common.ESTABLISH {
 			t := p.GetContactTime()
 			if t.Before(time.Now().Add(-1 * time.Second *
 				time.Duration(periodTime) * common.KEEPALIVE_TIMEOUT)) {
-				log.Warn("Keep alive timeout!!!")
+				log.Warnf("keep alive timeout!!!lost remote peer 0x%x - %s from %s", p.GetID(), p.SyncLink.GetAddr(), t.String())
 				p.CloseSync()
 				p.CloseCons()
 			}

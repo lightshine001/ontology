@@ -23,23 +23,12 @@ import (
 	types "github.com/ontio/ontology/p2pserver/common"
 )
 
-//start net server request
-type StartServerReq struct {
-	StartSync bool
-}
-
-//response of start request
-type StartServerRsp struct {
-	Error error
-}
-
 //stop net server
 type StopServerReq struct {
 }
 
 //response of stop request
 type StopServerRsp struct {
-	Error error
 }
 
 //version request
@@ -137,10 +126,9 @@ type GetNeighborAddrsReq struct {
 //response of all nbr`s address
 type GetNeighborAddrsRsp struct {
 	Addrs []types.PeerAddr
-	Count uint64
 }
 
 type TransmitConsensusMsgReq struct {
-	Target *keypair.PublicKey
+	Target keypair.PublicKey
 	Msg    []byte
 }

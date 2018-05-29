@@ -20,9 +20,10 @@ package ledgerstore
 
 import (
 	"fmt"
+	"math"
 	"sort"
-	"sync"
 	"strings"
+	"sync"
 
 	"github.com/ontio/ontology-crypto/keypair"
 	"github.com/ontio/ontology/common"
@@ -39,6 +40,8 @@ import (
 	"github.com/ontio/ontology/smartcontract"
 	scommon "github.com/ontio/ontology/smartcontract/common"
 	"github.com/ontio/ontology/smartcontract/event"
+	"github.com/ontio/ontology/smartcontract/service/neovm"
+	sstate "github.com/ontio/ontology/smartcontract/states"
 	"github.com/ontio/ontology/smartcontract/storage"
 	vmtype "github.com/ontio/ontology/smartcontract/types"
 )
@@ -381,7 +384,7 @@ func (this *LedgerStoreImp) verifyHeader(header *types.Header) error {
 	if prevHeader.Height+1 != header.Height {
 		return fmt.Errorf("block height is incorrect")
 	}
-	consensusType := strings.ToLower(config.Parameters.ConsensusType)
+	consensusType := strings.ToLower(config.DefConfig.Genesis.ConsensusType)
 	if consensusType != "vbft" {
 
 		if prevHeader.Timestamp >= header.Timestamp {
@@ -436,27 +439,6 @@ func (this *LedgerStoreImp) AddHeaders(headers []*types.Header) error {
 	return nil
 }
 
-func (this *LedgerStoreImp) verifyBlock(block *types.Block) error {
-	if block.Header.Height == 0 {
-		return nil
-	}
-	if len(block.Transactions) == 0 {
-		return fmt.Errorf("transaction is empty")
-	}
-	txs := block.Transactions
-	size := len(txs)
-	for i := 0; i < size; i++ {
-		tx := txs[i]
-		if i == 0 && tx.TxType != types.BookKeeping {
-			return fmt.Errorf("first transaction type is not Bookkeeping")
-		}
-		if i > 0 && tx.TxType == types.BookKeeping {
-			return fmt.Errorf("too many Bookkeeping transaction in block")
-		}
-	}
-	return nil
-}
-
 //AddBlock add the block to store.
 //When the block is not the next block, it will be cache. until the missing block arrived
 func (this *LedgerStoreImp) AddBlock(block *types.Block) error {
@@ -473,10 +455,6 @@ func (this *LedgerStoreImp) AddBlock(block *types.Block) error {
 	err := this.verifyHeader(block.Header)
 	if err != nil {
 		return fmt.Errorf("verifyHeader error %s", err)
-	}
-	err = this.verifyBlock(block)
-	if err != nil {
-		return fmt.Errorf("verifyBlock error %s", err)
 	}
 
 	err = this.saveBlock(block)
@@ -762,7 +740,7 @@ func (this *LedgerStoreImp) GetStorageItem(key *states.StorageKey) (*states.Stor
 }
 
 //GetEventNotifyByTx return the events notify gen by executing of smart contract.  Wrap function of EventStore.GetEventNotifyByTx
-func (this *LedgerStoreImp) GetEventNotifyByTx(tx common.Uint256) ([]*event.NotifyEventInfo, error) {
+func (this *LedgerStoreImp) GetEventNotifyByTx(tx common.Uint256) (*event.ExecuteNotify, error) {
 	return this.eventStore.GetEventNotifyByTx(tx)
 }
 
@@ -772,7 +750,7 @@ func (this *LedgerStoreImp) GetEventNotifyByBlock(height uint32) ([]common.Uint2
 }
 
 //PreExecuteContract return the result of smart contract execution without commit to store
-func (this *LedgerStoreImp) PreExecuteContract(tx *types.Transaction) (interface{}, error) {
+func (this *LedgerStoreImp) PreExecuteContract(tx *types.Transaction) (*sstate.PreExecResult, error) {
 	if tx.TxType != types.Invoke {
 		return nil, errors.NewErr("transaction type error")
 	}
@@ -799,12 +777,14 @@ func (this *LedgerStoreImp) PreExecuteContract(tx *types.Transaction) (interface
 		Store:      this,
 		CloneCache: storage.NewCloneCache(this.stateStore.NewStateBatch()),
 		Code:       invoke.Code,
+		Gas:        math.MaxUint64,
 	}
 
 	//start the smart contract executive function
 	result, err := sc.Execute()
+	gasCost := math.MaxUint64 - sc.Gas + neovm.TRANSACTION_GAS
 	if err != nil {
-		return nil, err
+		return &sstate.PreExecResult{State: event.CONTRACT_STATE_FAIL, Gas: gasCost, Result: nil}, err
 	}
 
 	prefix := invoke.Code.VmType
@@ -814,9 +794,10 @@ func (this *LedgerStoreImp) PreExecuteContract(tx *types.Transaction) (interface
 		if v, ok := result.([]byte); ok {
 			result = common.ToHexString(v)
 		}
+	} else if prefix == vmtype.Native {
+		result = common.ToHexString(result.([]byte))
 	}
-	return result, nil
-
+	return &sstate.PreExecResult{State: event.CONTRACT_STATE_SUCCESS, Gas: gasCost, Result: result}, nil
 }
 
 //Close ledger store.

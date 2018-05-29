@@ -65,13 +65,13 @@ const (
 type StateEvent struct {
 	Type      StateEventType
 	peerState *PeerState
-	blockNum  uint64
+	blockNum  uint32
 }
 
 type PeerState struct {
 	peerIdx           uint32
 	chainConfigView   uint32
-	committedBlockNum uint64
+	committedBlockNum uint32
 	connected         bool
 }
 
@@ -82,8 +82,9 @@ type StateMgr struct {
 	StateEventC      chan *StateEvent
 	peers            map[uint32]*PeerState
 
-	liveTicker          *time.Timer
-	lastTickChainHeight uint64
+	liveTicker             *time.Timer
+	lastTickChainHeight    uint32
+	lastBlockSyncReqHeight uint32
 }
 
 func newStateMgr(server *Server) *StateMgr {
@@ -106,7 +107,7 @@ func (self *StateMgr) run() {
 			Type:     LiveTick,
 			blockNum: self.server.GetCommittedBlockNo(),
 		}
-		self.liveTicker.Reset(peerHandshakeTimeout * 5)
+		self.liveTicker.Reset(peerHandshakeTimeout * 3)
 	})
 
 	// wait config done
@@ -157,7 +158,9 @@ func (self *StateMgr) run() {
 
 			case SyncDone:
 				log.Infof("server %d sync done, curr blkNum: %d", self.server.Index, self.server.GetCurrentBlockNo())
-				self.setSyncedReady()
+				if err := self.setSyncedReady(); err != nil {
+					log.Warnf("server %d set syncready: %s", self.server.Index, err)
+				}
 
 			case LiveTick:
 				if err := self.onLiveTick(evt); err != nil {
@@ -215,7 +218,10 @@ func (self *StateMgr) onPeerUpdate(peerState *PeerState) error {
 				log.Infof("server %d, syncing %d, target %d, fastforward %t",
 					self.server.Index, self.server.GetCommittedBlockNo(), committedBlkNum, fastforward)
 				if fastforward {
-					self.server.makeFastForward()
+					if err := self.server.makeFastForward(); err != nil {
+						log.Errorf("server %d state %d fastforward: %s",
+							self.server.Index, self.currentState, err)
+					}
 				} else {
 					self.checkStartSyncing(self.server.GetCommittedBlockNo(), false)
 				}
@@ -223,7 +229,9 @@ func (self *StateMgr) onPeerUpdate(peerState *PeerState) error {
 		}
 		if self.isSyncedReady() {
 			log.Infof("server %d synced from syncing", self.server.Index)
-			self.setSyncedReady()
+			if err := self.setSyncedReady(); err != nil {
+				log.Warnf("server %d, state %d set syncready: %s", self.server.Index, self.currentState, err)
+			}
 		}
 	case WaitNetworkReady:
 		if self.isSyncedReady() {
@@ -236,11 +244,16 @@ func (self *StateMgr) onPeerUpdate(peerState *PeerState) error {
 		if ok && committedBlkNum > self.server.GetCommittedBlockNo()+1 {
 			log.Infof("server %d synced try fastforward from %d",
 				self.server.Index, self.server.GetCommittedBlockNo())
-			self.server.makeFastForward()
+			if err := self.server.makeFastForward(); err != nil {
+				log.Errorf("server %d state %d fast forward from %d: %s",
+					self.server.Index, self.currentState, self.server.GetCommittedBlockNo(), err)
+			}
 		}
 	case SyncingCheck:
 		if self.isSyncedReady() {
-			self.setSyncedReady()
+			if err := self.setSyncedReady(); err != nil {
+				log.Warnf("server %d, state %d set syncready: %s", self.server.Index, self.currentState, err)
+			}
 		} else {
 			self.checkStartSyncing(self.server.GetCommittedBlockNo()+MAX_SYNCING_CHECK_BLK_NUM, false)
 		}
@@ -281,8 +294,22 @@ func (self *StateMgr) onLiveTick(evt *StateEvent) error {
 		return nil
 	}
 
-	log.Errorf("server %d detected consensus halt %d",
+	log.Warnf("server %d detected consensus halt %d",
 		self.server.Index, self.server.GetCurrentBlockNo())
+
+	committedBlkNum, ok := self.getConsensusedCommittedBlockNum()
+	if ok && committedBlkNum > self.server.GetCommittedBlockNo() {
+		fastforward := self.canFastForward(committedBlkNum)
+		log.Infof("server %d, syncing %d, target %d, fast-forward %t",
+			self.server.Index, self.server.GetCommittedBlockNo(), committedBlkNum, fastforward)
+		if fastforward {
+			if err := self.server.makeFastForward(); err != nil {
+				log.Errorf("server %d on live ticker fast forward: %s", self.server.Index, err)
+			}
+		} else {
+			self.checkStartSyncing(self.server.GetCommittedBlockNo(), false)
+		}
+	}
 
 	return self.server.reBroadcastCurrentRoundMsgs()
 }
@@ -345,16 +372,16 @@ func (self *StateMgr) setSyncedReady() error {
 				blockNum: blkNum,
 			}
 		})
-		self.server.makeFastForward()
+		return self.server.makeFastForward()
 	}
 
 	return nil
 }
 
-func (self *StateMgr) checkStartSyncing(startBlkNum uint64, forceSync bool) error {
+func (self *StateMgr) checkStartSyncing(startBlkNum uint32, forceSync bool) error {
 
-	var maxCommitted uint64
-	peers := make(map[uint64][]uint32)
+	var maxCommitted uint32
+	peers := make(map[uint32][]uint32)
 	for _, p := range self.peers {
 		n := p.committedBlockNum
 		if n > startBlkNum {
@@ -375,15 +402,16 @@ func (self *StateMgr) checkStartSyncing(startBlkNum uint64, forceSync bool) erro
 	if maxCommitted > startBlkNum || forceSync {
 		self.currentState = Syncing
 		startBlkNum = self.server.GetCommittedBlockNo() + 1
-		if maxCommitted <= startBlkNum {
-			maxCommitted = startBlkNum + 1
-		}
 
-		log.Infof("server %d, start syncing %d - %d, with %v", self.server.Index, startBlkNum, maxCommitted, peers)
-		self.server.syncer.blockSyncReqC <- &BlockSyncReq{
-			targetPeers:    peers[maxCommitted],
-			startBlockNum:  startBlkNum,
-			targetBlockNum: maxCommitted,
+		if maxCommitted > self.lastBlockSyncReqHeight {
+			// syncer is much slower than peer-update, too much SyncReq can make channel full
+			log.Infof("server %d, start syncing %d - %d, with %v", self.server.Index, startBlkNum, maxCommitted, peers)
+			self.lastBlockSyncReqHeight = maxCommitted
+			self.server.syncer.blockSyncReqC <- &BlockSyncReq{
+				targetPeers:    peers[maxCommitted],
+				startBlockNum:  startBlkNum,
+				targetBlockNum: maxCommitted,
+			}
 		}
 	} else if self.currentState == Synced {
 		log.Infof("server %d, start syncing check %v, %d", self.server.Index, peers, self.server.GetCurrentBlockNo())
@@ -393,23 +421,14 @@ func (self *StateMgr) checkStartSyncing(startBlkNum uint64, forceSync bool) erro
 	return nil
 }
 
-func (self *Server) restartSyncing() {
-
-	// send sync request to self.sync, go syncing-state immediately
-	// stop all bft timers
-
-	self.stateMgr.checkStartSyncing(self.GetCommittedBlockNo(), true)
-
-}
-
 // return 0 if consensus not reached yet
-func (self *StateMgr) getConsensusedCommittedBlockNum() (uint64, bool) {
+func (self *StateMgr) getConsensusedCommittedBlockNum() (uint32, bool) {
 	C := int(self.server.config.C)
 
 	consensused := false
-	var maxCommitted uint64
+	var maxCommitted uint32
 	myCommitted := self.server.GetCommittedBlockNo()
-	peers := make(map[uint64][]uint32)
+	peers := make(map[uint32][]uint32)
 	for _, p := range self.peers {
 		n := p.committedBlockNum
 		if n >= myCommitted {
@@ -431,13 +450,8 @@ func (self *StateMgr) getConsensusedCommittedBlockNum() (uint64, bool) {
 	return maxCommitted, consensused
 }
 
-func (self *StateMgr) canFastForward(targetBlkNum uint64) bool {
-	if self.getState() != Syncing {
-		// fastword check only support syncing state
-		return false
-	}
-
-	if targetBlkNum > self.server.GetCommittedBlockNo()+MAX_SYNCING_CHECK_BLK_NUM*8 {
+func (self *StateMgr) canFastForward(targetBlkNum uint32) bool {
+	if targetBlkNum > self.server.GetCommittedBlockNo()+MAX_SYNCING_CHECK_BLK_NUM*4 {
 		return false
 	}
 
@@ -445,13 +459,14 @@ func (self *StateMgr) canFastForward(targetBlkNum uint64) bool {
 	// one block less than targetBlkNum is also acceptable for fastforward
 	for blkNum := self.server.GetCurrentBlockNo(); blkNum < targetBlkNum; blkNum++ {
 		if len(self.server.msgPool.GetProposalMsgs(blkNum)) == 0 {
-			log.Info("server %d check fastforward false, no proposal for block %d",
+			log.Infof("server %d check fastforward false, no proposal for block %d",
 				self.server.Index, blkNum)
 			return false
 		}
-		if len(self.server.msgPool.GetCommitMsgs(blkNum)) <= C {
-			log.Info("server %d check fastforward false, no commit msg for block %d",
-				self.server.Index, blkNum)
+		cMsgs := self.server.msgPool.GetCommitMsgs(blkNum)
+		if len(cMsgs) <= C {
+			log.Infof("server %d check fastforward false, only %d commit msg for block %d",
+				self.server.Index, len(cMsgs), blkNum)
 			return false
 		}
 	}

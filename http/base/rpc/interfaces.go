@@ -22,11 +22,10 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"math/big"
-
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/config"
 	"github.com/ontio/ontology/common/log"
+	"github.com/ontio/ontology/common/serialization"
 	"github.com/ontio/ontology/core/genesis"
 	"github.com/ontio/ontology/core/payload"
 	"github.com/ontio/ontology/core/types"
@@ -41,11 +40,7 @@ func GetGenerateBlockTime(params []interface{}) map[string]interface{} {
 }
 
 func GetBestBlockHash(params []interface{}) map[string]interface{} {
-	hash, err := bactor.CurrentBlockHash()
-	if err != nil {
-		log.Errorf("GetBestBlockHash error:%s", err)
-		return responsePack(berr.INTERNAL_ERROR, false)
-	}
+	hash := bactor.CurrentBlockHash()
 	return responseSuccess(common.ToHexString(hash.ToArray()))
 }
 
@@ -62,7 +57,7 @@ func GetBlock(params []interface{}) map[string]interface{} {
 	// block height
 	case float64:
 		index := uint32(params[0].(float64))
-		hash, err = bactor.GetBlockHashFromStore(index)
+		hash = bactor.GetBlockHashFromStore(index)
 		if err != nil {
 			log.Errorf("GetBlock GetBlockHashFromStore Height:%v error:%s", index, err)
 			return responsePack(berr.UNKNOWN_BLOCK, "unknown block")
@@ -108,11 +103,7 @@ func GetBlock(params []interface{}) map[string]interface{} {
 }
 
 func GetBlockCount(params []interface{}) map[string]interface{} {
-	height, err := bactor.BlockHeight()
-	if err != nil {
-		log.Errorf("GetBlockCount error:%s", err)
-		return responsePack(berr.INTERNAL_ERROR, false)
-	}
+	height := bactor.GetCurrentBlockHeight()
 	return responseSuccess(height + 1)
 }
 
@@ -125,11 +116,7 @@ func GetBlockHash(params []interface{}) map[string]interface{} {
 	switch params[0].(type) {
 	case float64:
 		height := uint32(params[0].(float64))
-		hash, err := bactor.GetBlockHashFromStore(height)
-		if err != nil {
-			log.Errorf("GetBlockHash GetBlockHashFromStore height:%v error:%s", height, err)
-			return responsePack(berr.UNKNOWN_BLOCK, "unknown block")
-		}
+		hash := bactor.GetBlockHashFromStore(height)
 		return responseSuccess(fmt.Sprintf("%016x", hash))
 	default:
 		return responsePack(berr.INVALID_PARAMS, "")
@@ -147,7 +134,7 @@ func GetConnectionCount(params []interface{}) map[string]interface{} {
 
 func GetRawMemPool(params []interface{}) map[string]interface{} {
 	txs := []*bcomn.Transactions{}
-	txpool, _ := bactor.GetTxsFromPool(false)
+	txpool := bactor.GetTxsFromPool(false)
 	for _, t := range txpool {
 		txs = append(txs, bcomn.TransArryByteToHexString(t))
 	}
@@ -181,7 +168,7 @@ func GetMemPoolTxState(params []interface{}) map[string]interface{} {
 		for _, t := range txEntry.Attrs {
 			attrs = append(attrs, bcomn.TXNAttrInfo{t.Height, int(t.Type), int(t.ErrCode)})
 		}
-		info := bcomn.TXNEntryInfo{*tran, int64(txEntry.Fee), attrs}
+		info := bcomn.TXNEntryInfo{*tran, int64(txEntry.Tx.GasPrice), attrs}
 		return responseSuccess(info)
 	default:
 		return responsePack(berr.INVALID_PARAMS, "")
@@ -326,7 +313,7 @@ func GetNodeVersion(params []interface{}) map[string]interface{} {
 }
 
 func GetSystemFee(params []interface{}) map[string]interface{} {
-	return responseSuccess(config.Parameters.SystemFee)
+	return responseSuccess(config.DefConfig.Common.SystemFee)
 }
 
 func GetContractState(params []interface{}) map[string]interface{} {
@@ -374,6 +361,9 @@ func GetContractState(params []interface{}) map[string]interface{} {
 }
 
 func GetSmartCodeEvent(params []interface{}) map[string]interface{} {
+	if !config.DefConfig.Common.EnableEventLog {
+		return responsePack(berr.INVALID_METHOD, "")
+	}
 	if len(params) < 1 {
 		return responsePack(berr.INVALID_PARAMS, nil)
 	}
@@ -402,15 +392,15 @@ func GetSmartCodeEvent(params []interface{}) map[string]interface{} {
 		if err := hash.Deserialize(bytes.NewReader(hex)); err != nil {
 			return responsePack(berr.INVALID_PARAMS, "")
 		}
-		eventInfos, err := bactor.GetEventNotifyByTxHash(hash)
+		eventInfo, err := bactor.GetEventNotifyByTxHash(hash)
 		if err != nil {
 			return responsePack(berr.INVALID_PARAMS, "")
 		}
-		var evs []bcomn.NotifyEventInfo
-		for _, v := range eventInfos {
-			evs = append(evs, bcomn.NotifyEventInfo{common.ToHexString(v.TxHash[:]), v.ContractAddress.ToHexString(), v.States})
+		if eventInfo == nil {
+			return responsePack(berr.INVALID_TRANSACTION, "")
 		}
-		return responseSuccess(evs)
+		_, notify := bcomn.GetExecuteNotify(eventInfo)
+		return responseSuccess(notify)
 	default:
 		return responsePack(berr.INVALID_PARAMS, "")
 	}
@@ -448,6 +438,21 @@ func GetBlockHeightByTxHash(params []interface{}) map[string]interface{} {
 	return responsePack(berr.INVALID_PARAMS, "")
 }
 
+func getStoreUint64Value(contractAddress, accountAddress common.Address) (uint64, error) {
+	data, err := bactor.GetStorageItem(contractAddress, accountAddress[:])
+	if err != nil {
+		return 0, fmt.Errorf("GetOntBalanceOf GetStorageItem ont address:%s error:%s", accountAddress.ToBase58(), err)
+	}
+	if len(data) == 0 {
+		return 0, nil
+	}
+	value, err := serialization.ReadUint64(bytes.NewBuffer(data))
+	if err != nil {
+		return 0, fmt.Errorf("serialization.ReadUint64:%x error:%s", data, err)
+	}
+	return value, err
+}
+
 func GetBalance(params []interface{}) map[string]interface{} {
 	if len(params) < 1 {
 		return responsePack(berr.INVALID_PARAMS, "")
@@ -460,31 +465,43 @@ func GetBalance(params []interface{}) map[string]interface{} {
 	if err != nil {
 		return responsePack(berr.INVALID_PARAMS, "")
 	}
-	ont := new(big.Int)
-	ong := new(big.Int)
-	appove := big.NewInt(0)
-
-	ontBalance, err := bactor.GetStorageItem(genesis.OntContractAddress, address[:])
+	rsp, err := bcomn.GetBalance(address)
 	if err != nil {
-		log.Errorf("GetOntBalanceOf GetStorageItem ont address:%s error:%s", addrBase58, err)
-		return responsePack(berr.INTERNAL_ERROR, "internal error")
+		log.Errorf("GetBalance address:%s error:%s", addrBase58, err)
+		return responsePack(berr.INTERNAL_ERROR, "")
 	}
-	if ontBalance != nil {
-		ont.SetBytes(ontBalance)
-	}
+	return responseSuccess(rsp)
+}
 
-	appoveKey := append(genesis.OntContractAddress[:], address[:]...)
-	ongappove, err := bactor.GetStorageItem(genesis.OngContractAddress, appoveKey[:])
-
-	if ongappove != nil {
-		appove.SetBytes(ongappove)
+func GetAllowance(params []interface{}) map[string]interface{} {
+	if len(params) < 3 {
+		return responsePack(berr.INVALID_PARAMS, "")
 	}
-	rsp := &bcomn.BalanceOfRsp{
-		Ont:       ont.String(),
-		Ong:       ong.String(),
-		OngAppove: appove.String(),
+	asset, ok := params[0].(string)
+	if !ok {
+		return responsePack(berr.INVALID_PARAMS, "")
 	}
-
+	fromAddrStr, ok := params[1].(string)
+	if !ok {
+		return responsePack(berr.INVALID_PARAMS, "")
+	}
+	fromAddr, err := common.AddressFromBase58(fromAddrStr)
+	if err != nil {
+		return responsePack(berr.INVALID_PARAMS, "")
+	}
+	toAddrStr, ok := params[2].(string)
+	if !ok {
+		return responsePack(berr.INVALID_PARAMS, "")
+	}
+	toAddr, err := common.AddressFromBase58(toAddrStr)
+	if err != nil {
+		return responsePack(berr.INVALID_PARAMS, "")
+	}
+	rsp, err := bcomn.GetAllowance(asset, fromAddr, toAddr)
+	if err != nil {
+		log.Errorf("GetAllowance %s from:%s to:%s error:%s", asset, fromAddrStr, toAddrStr, err)
+		return responsePack(berr.INTERNAL_ERROR, "")
+	}
 	return responseSuccess(rsp)
 }
 
@@ -513,10 +530,7 @@ func GetMerkleProof(params []interface{}) map[string]interface{} {
 		return responsePack(berr.INVALID_PARAMS, "")
 	}
 
-	curHeight, err := bactor.BlockHeight()
-	if err != nil {
-		return responsePack(berr.INVALID_PARAMS, "")
-	}
+	curHeight := bactor.GetCurrentBlockHeight()
 	curHeader, err := bactor.GetHeaderByHeight(curHeight)
 	if err != nil {
 		return responsePack(berr.INVALID_PARAMS, "")
@@ -531,4 +545,33 @@ func GetMerkleProof(params []interface{}) map[string]interface{} {
 	}
 	return responseSuccess(bcomn.MerkleProof{"MerkleProof", common.ToHexString(header.TransactionsRoot[:]), height,
 		common.ToHexString(curHeader.BlockRoot[:]), curHeight, hashes})
+}
+
+func GetGasPrice(params []interface{}) map[string]interface{} {
+	result, err := bcomn.GetGasPrice()
+	if err != nil {
+		return responsePack(berr.INTERNAL_ERROR, "")
+	}
+	return responseSuccess(result)
+}
+
+func GetUnclaimOng(params []interface{}) map[string]interface{} {
+	if len(params) < 1 {
+		return responsePack(berr.INVALID_PARAMS, "")
+	}
+	str, ok := params[0].(string)
+	if !ok {
+		return responsePack(berr.INVALID_PARAMS, "")
+	}
+	toAddr, err := common.AddressFromBase58(str)
+	if err != nil {
+		return responsePack(berr.INVALID_PARAMS, "")
+	}
+	fromAddr := genesis.OntContractAddress
+	rsp, err := bcomn.GetAllowance("ong", fromAddr, toAddr)
+	if err != nil {
+		log.Errorf("GetUnclaimOng %s error:%s", toAddr.ToBase58(), err)
+		return responsePack(berr.INTERNAL_ERROR, "")
+	}
+	return responseSuccess(rsp)
 }

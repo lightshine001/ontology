@@ -29,11 +29,10 @@ import (
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/core/ledger"
-	"github.com/ontio/ontology/core/payload"
 	"github.com/ontio/ontology/core/types"
 	tc "github.com/ontio/ontology/txnpool/common"
 	tp "github.com/ontio/ontology/txnpool/proc"
-	"github.com/ontio/ontology/validator/statefull"
+	"github.com/ontio/ontology/validator/stateful"
 	"github.com/ontio/ontology/validator/stateless"
 )
 
@@ -46,15 +45,9 @@ func init() {
 	log.Init(log.PATH, log.Stdout)
 	topic = "TXN"
 
-	bookKeepingPayload := &payload.Bookkeeping{
-		Nonce: uint64(time.Now().UnixNano()),
-	}
-
 	tx = &types.Transaction{
 		Version:    0,
 		Attributes: []*types.TxAttribute{},
-		TxType:     types.BookKeeping,
-		Payload:    bookKeepingPayload,
 	}
 
 	tempStr := "3369930accc1ddd067245e8edadcd9bea207ba5e1753ac18a51df77a343bfe92"
@@ -131,7 +124,7 @@ func Test_RCV(t *testing.T) {
 	}
 	statelessV3.Register(rspPid)
 
-	statefulV, err := statefull.NewValidator("stateful")
+	statefulV, err := stateful.NewValidator("stateful")
 	if err != nil {
 		t.Errorf("failed to new stateful valdiator", err)
 		return

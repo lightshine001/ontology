@@ -75,7 +75,6 @@ func TestTxActor(t *testing.T) {
 	txEntry := &tc.TXEntry{
 		Tx:    txn,
 		Attrs: []*tc.TXAttr{},
-		Fee:   txn.GetTotalFee(),
 	}
 	s.addTxList(txEntry)
 
@@ -118,12 +117,11 @@ func TestTxPoolActor(t *testing.T) {
 	txEntry := &tc.TXEntry{
 		Tx:    txn,
 		Attrs: []*tc.TXAttr{},
-		Fee:   txn.GetTotalFee(),
 	}
 
 	retAttr := &tc.TXAttr{
 		Height:  0,
-		Type:    vt.Statefull,
+		Type:    vt.Stateful,
 		ErrCode: errors.ErrNoError,
 	}
 	txEntry.Attrs = append(txEntry.Attrs, retAttr)

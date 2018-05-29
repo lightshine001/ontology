@@ -19,28 +19,24 @@
 package vbft
 
 import (
-	"fmt"
-	"os"
 	"testing"
 
 	"github.com/ontio/ontology/account"
 	"github.com/ontio/ontology/common"
 )
 
+func HashBlock(blk *Block) (common.Uint256, error) {
+	return blk.Block.Hash(), nil
+}
+
 func TestSignMsg(t *testing.T) {
-	passwd := string("passwordtest")
-	acct := account.Open(account.WALLET_FILENAME, []byte(passwd))
-	acc := acct.GetDefaultAccount()
+	acc := account.NewAccount("SHA256withECDSA")
 	if acc == nil {
-		fmt.Println("GetDefaultAccount error: acc is nil")
-		os.Exit(1)
-	}
-	msg, err := constructProposalMsg(acc)
-	if err != nil {
-		t.Errorf("constructProposalMsg failed: %v", err)
+		t.Error("GetDefaultAccount error: acc is nil")
 		return
 	}
-	_, err = SignMsg(acc, msg)
+	msg := constructProposalMsgTest(acc)
+	_, err := SignMsg(acc, msg)
 	if err != nil {
 		t.Errorf("TestSignMsg Failed: %v", err)
 		return

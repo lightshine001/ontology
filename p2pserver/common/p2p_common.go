@@ -28,12 +28,6 @@ const (
 	SERVICE_NODE = 2 //peer only sync with consensus peer
 )
 
-//config const
-const (
-	VERIFY_NODE_NAME  = "verify"  //verify mode name in config.json
-	SERVICE_NODE_NAME = "service" //service mode name in config.json
-)
-
 //msg cmd const
 const (
 	MSG_CMD_LEN      = 12         //msg type length in byte
@@ -50,7 +44,7 @@ const (
 
 //info update const
 const (
-	PROTOCOL_VERSION      = 0         //protocol verison
+	PROTOCOL_VERSION      = 0         //protocol version
 	MAX_BUF_LEN           = 1024 * 16 //the maximum buffer to receive message
 	UPDATE_RATE_PER_BLOCK = 2         //info update rate in one generate block period
 	KEEPALIVE_TIMEOUT     = 15        //contact timeout in sec
@@ -58,8 +52,8 @@ const (
 	CONN_MONITOR          = 6         //time to retry connect in sec
 	CONN_MAX_BACK         = 4000      //max backoff time in micro sec
 	MAX_RETRY_COUNT       = 3         //max reconnect time of remote peer
-	CHAN_CAPABILITY       = 10000     //chhannel capability of recv link
-	SYNC_BLK_WAIT         = 2         //time interval for blk sync check
+	CHAN_CAPABILITY       = 10000     //channel capability of recv link
+	SYNC_BLK_WAIT         = 2         //timespan for blk sync check
 )
 
 // The peer state

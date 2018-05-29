@@ -21,8 +21,8 @@
 package txnpool
 
 import (
+	"fmt"
 	"github.com/ontio/ontology-eventbus/actor"
-	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/events"
 	"github.com/ontio/ontology/events/message"
 	tc "github.com/ontio/ontology/txnpool/common"
@@ -31,23 +31,23 @@ import (
 
 // startActor starts an actor with the proxy and unique id,
 // and return the pid.
-func startActor(obj interface{}, id string) *actor.PID {
+func startActor(obj interface{}, id string) (*actor.PID, error) {
 	props := actor.FromProducer(func() actor.Actor {
 		return obj.(actor.Actor)
 	})
 
 	pid, _ := actor.SpawnNamed(props, id)
 	if pid == nil {
-		log.Error("Fail to start actor")
-		return nil
+		return nil, fmt.Errorf("fail to start actor at props:%v id:%s",
+			props, id)
 	}
-	return pid
+	return pid, nil
 }
 
 // StartTxnPoolServer starts the txnpool server and registers
 // actors to handle the msgs from the network, http, consensus
 // and validators. Meanwhile subscribes the block complete  event.
-func StartTxnPoolServer() *tp.TXPoolServer {
+func StartTxnPoolServer() (*tp.TXPoolServer, error) {
 	var s *tp.TXPoolServer
 
 	/* Start txnpool server to receive msgs from p2p,
@@ -57,33 +57,30 @@ func StartTxnPoolServer() *tp.TXPoolServer {
 
 	// Initialize an actor to handle the msgs from valdiators
 	rspActor := tp.NewVerifyRspActor(s)
-	rspPid := startActor(rspActor, "txVerifyRsp")
+	rspPid, err := startActor(rspActor, "txVerifyRsp")
 	if rspPid == nil {
-		log.Error("Fail to start verify rsp actor")
-		return nil
+		return nil, err
 	}
 	s.RegisterActor(tc.VerifyRspActor, rspPid)
 
 	// Initialize an actor to handle the msgs from consensus
 	tpa := tp.NewTxPoolActor(s)
-	txPoolPid := startActor(tpa, "txPool")
+	txPoolPid, err := startActor(tpa, "txPool")
 	if txPoolPid == nil {
-		log.Error("Fail to start txnpool actor")
-		return nil
+		return nil, err
 	}
 	s.RegisterActor(tc.TxPoolActor, txPoolPid)
 
 	// Initialize an actor to handle the msgs from p2p and api
 	ta := tp.NewTxActor(s)
-	txPid := startActor(ta, "tx")
+	txPid, err := startActor(ta, "tx")
 	if txPid == nil {
-		log.Error("Fail to start txn actor")
-		return nil
+		return nil, err
 	}
 	s.RegisterActor(tc.TxActor, txPid)
 
 	// Subscribe the block complete event
 	var sub = events.NewActorSubscriber(txPoolPid)
 	sub.Subscribe(message.TOPIC_SAVE_BLOCK_COMPLETE)
-	return s
+	return s, nil
 }

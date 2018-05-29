@@ -73,6 +73,7 @@ type TXPoolServer struct {
 	validators    *registerValidators                 // The registered validators
 	stats         txStats                             // The transaction statstics
 	slots         chan struct{}                       // The limited slots for the new transaction
+	height        uint32                              // The current block height
 }
 
 // NewTxPoolServer creates a new tx pool server to schedule workers to
@@ -160,6 +161,20 @@ func (s *TXPoolServer) getPendingListSize() int {
 	return len(s.allPendingTxs)
 }
 
+// getHeight return current block height
+func (s *TXPoolServer) getHeight() uint32 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.height
+}
+
+// setHeight set current block height
+func (s *TXPoolServer) setHeight(height uint32) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.height = height
+}
+
 // removePendingTx removes a transaction from the pending list
 // when it is handled. And if the submitter of the valid transaction
 // is from http, broadcast it to the network. Meanwhile, check if it
@@ -188,7 +203,7 @@ func (s *TXPoolServer) removePendingTx(hash common.Uint256,
 		select {
 		case s.slots <- struct{}{}:
 		default:
-			log.Debug("slots is full")
+			log.Debug("removePendingTx: slots is full")
 		}
 	}
 
@@ -207,7 +222,7 @@ func (s *TXPoolServer) setPendingTx(tx *tx.Transaction,
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if ok := s.allPendingTxs[tx.Hash()]; ok != nil {
-		log.Info("Transaction already in the verifying process",
+		log.Infof("setPendingTx: transaction %x already in the verifying process",
 			tx.Hash())
 		return false
 	}
@@ -314,7 +329,8 @@ func (s *TXPoolServer) unRegisterValidator(checkType types.VerifyType,
 
 	tmpSlice, ok := s.validators.entries[checkType]
 	if !ok {
-		log.Error("No validator on check type:%d\n", checkType)
+		log.Errorf("unRegisterValidator: validator not found with type:%d, id:%s",
+			checkType, id)
 		return
 	}
 
@@ -392,6 +408,8 @@ func (s *TXPoolServer) getTransaction(hash common.Uint256) *tx.Transaction {
 
 // getTxPool returns a tx list for consensus.
 func (s *TXPoolServer) getTxPool(byCount bool, height uint32) []*tc.TXEntry {
+	s.setHeight(height)
+
 	avlTxList, oldTxList := s.txPool.GetTxPool(byCount, height)
 
 	for _, t := range oldTxList {
@@ -538,6 +556,7 @@ func (s *TXPoolServer) verifyBlock(req *tc.VerifyBlockReq, sender *actor.PID) {
 		return
 	}
 
+	s.setHeight(req.Height)
 	s.pendingBlock.mu.Lock()
 	defer s.pendingBlock.mu.Unlock()
 

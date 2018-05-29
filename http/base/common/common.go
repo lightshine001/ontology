@@ -19,18 +19,31 @@
 package common
 
 import (
+	"bytes"
+	"encoding/hex"
+	"fmt"
+	"github.com/ontio/ontology-crypto/keypair"
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/log"
+	"github.com/ontio/ontology/common/serialization"
+	"github.com/ontio/ontology/core/genesis"
+	"github.com/ontio/ontology/core/payload"
 	"github.com/ontio/ontology/core/types"
 	ontErrors "github.com/ontio/ontology/errors"
 	bactor "github.com/ontio/ontology/http/base/actor"
-	"github.com/ontio/ontology-crypto/keypair"
+	"github.com/ontio/ontology/smartcontract/event"
+	cstates "github.com/ontio/ontology/smartcontract/states"
+	vmtypes "github.com/ontio/ontology/smartcontract/types"
+	"math/big"
+	"strings"
+	"time"
 )
+
+const MAX_SEARCH_HEIGHT uint32 = 100
 
 type BalanceOfRsp struct {
 	Ont string `json:"ont"`
 	Ong string `json:"ong"`
-	OngAppove string `json:"ong_appove"`
 }
 
 type MerkleProof struct {
@@ -42,8 +55,14 @@ type MerkleProof struct {
 	TargetHashes     []string
 }
 
+type ExecuteNotify struct {
+	TxHash      string
+	State       byte
+	GasConsumed uint64
+	Notify      []NotifyEventInfo
+}
+
 type NotifyEventInfo struct {
-	TxHash          string
 	ContractAddress string
 	States          interface{}
 }
@@ -71,11 +90,12 @@ type Sig struct {
 type Transactions struct {
 	Version    byte
 	Nonce      uint32
+	GasPrice   uint64
+	GasLimit   uint64
+	Payer      string
 	TxType     types.TransactionType
 	Payload    PayloadInfo
 	Attributes []TxAttributeInfo
-	Fee        []Fee
-	NetworkFee common.Fixed64
 	Sigs       []Sig
 	Hash       string
 }
@@ -88,6 +108,7 @@ type BlockHead struct {
 	Timestamp        uint32
 	Height           uint32
 	ConsensusData    uint64
+	ConsensusPayload string
 	NextBookkeeper   string
 
 	Bookkeepers []string
@@ -131,21 +152,30 @@ type TXNEntryInfo struct {
 	Attrs []TXNAttrInfo // the result from each validator
 }
 
+func GetExecuteNotify(obj *event.ExecuteNotify) (map[string]bool, ExecuteNotify) {
+	evts := []NotifyEventInfo{}
+	var contractAddrs = make(map[string]bool)
+	for _, v := range obj.Notify {
+		evts = append(evts, NotifyEventInfo{v.ContractAddress.ToHexString(), v.States})
+		contractAddrs[v.ContractAddress.ToHexString()] = true
+	}
+	txhash := common.ToHexString(obj.TxHash[:])
+	return contractAddrs, ExecuteNotify{txhash, obj.State, obj.GasConsumed, evts}
+}
+
 func TransArryByteToHexString(ptx *types.Transaction) *Transactions {
 	trans := new(Transactions)
 	trans.TxType = ptx.TxType
 	trans.Nonce = ptx.Nonce
+	trans.GasLimit = ptx.GasLimit
+	trans.GasPrice = ptx.GasPrice
+	trans.Payer = ptx.Payer.ToHexString()
 	trans.Payload = TransPayloadToHex(ptx.Payload)
 
 	trans.Attributes = make([]TxAttributeInfo, len(ptx.Attributes))
 	for i, v := range ptx.Attributes {
 		trans.Attributes[i].Usage = v.Usage
 		trans.Attributes[i].Data = common.ToHexString(v.Data)
-	}
-	trans.Fee = []Fee{}
-	for _, fee := range ptx.Fee {
-		e := Fee{fee.Amount, common.ToHexString(fee.Payer[:])}
-		trans.Fee = append(trans.Fee, e)
 	}
 	trans.Sigs = []Sig{}
 	for _, sig := range ptx.Sigs {
@@ -159,8 +189,6 @@ func TransArryByteToHexString(ptx *types.Transaction) *Transactions {
 		}
 		trans.Sigs = append(trans.Sigs, e)
 	}
-	networkfee := ptx.GetNetworkFee()
-	trans.NetworkFee = networkfee
 
 	mhash := ptx.Hash()
 	trans.Hash = common.ToHexString(mhash.ToArray())
@@ -198,6 +226,7 @@ func GetBlockInfo(block *types.Block) BlockInfo {
 		Timestamp:        block.Header.Timestamp,
 		Height:           block.Header.Height,
 		ConsensusData:    block.Header.ConsensusData,
+		ConsensusPayload: common.ToHexString(block.Header.ConsensusPayload),
 		NextBookkeeper:   block.Header.NextBookkeeper.ToBase58(),
 		Bookkeepers:      bookkeepers,
 		SigData:          sigData,
@@ -215,4 +244,165 @@ func GetBlockInfo(block *types.Block) BlockInfo {
 		Transactions: trans,
 	}
 	return b
+}
+
+func GetBalance(address common.Address) (*BalanceOfRsp, error) {
+	ont, err := GetContractBalance(0, genesis.OntContractAddress, address)
+	if err != nil {
+		return nil, fmt.Errorf("get ont balance error:%s", err)
+	}
+	ong, err := GetContractBalance(0, genesis.OngContractAddress, address)
+	if err != nil {
+		return nil, fmt.Errorf("get ont balance error:%s", err)
+	}
+	return &BalanceOfRsp{
+		Ont: fmt.Sprintf("%d", ont),
+		Ong: fmt.Sprintf("%d", ong),
+	}, nil
+}
+
+func GetAllowance(asset string, from, to common.Address) (string, error) {
+	var contractAddr common.Address
+	switch strings.ToLower(asset) {
+	case "ont":
+		contractAddr = genesis.OntContractAddress
+	case "ong":
+		contractAddr = genesis.OngContractAddress
+	default:
+		return "", fmt.Errorf("unsupport asset")
+	}
+	allowance, err := GetContractAllowance(0, contractAddr, from, to)
+	if err != nil {
+		return "", fmt.Errorf("get allowance error:%s", err)
+	}
+	return fmt.Sprintf("%v", allowance), nil
+}
+
+func GetContractBalance(cVersion byte, contractAddr, accAddr common.Address) (uint64, error) {
+	addrBuf := bytes.NewBuffer(nil)
+	err := accAddr.Serialize(addrBuf)
+	if err != nil {
+		return 0, fmt.Errorf("address serialize error:%s", err)
+	}
+	argBuf := bytes.NewBuffer(nil)
+	err = serialization.WriteVarBytes(argBuf, addrBuf.Bytes())
+	if err != nil {
+		return 0, fmt.Errorf("serialization.WriteVarBytes error:%s", err)
+	}
+	crt := &cstates.Contract{
+		Version: cVersion,
+		Address: contractAddr,
+		Method:  "balanceOf",
+		Args:    argBuf.Bytes(),
+	}
+	buf := bytes.NewBuffer(nil)
+	err = crt.Serialize(buf)
+	if err != nil {
+		return 0, fmt.Errorf("Serialize contract error:%s", err)
+	}
+	result, err := PrepareInvokeContract(cVersion, vmtypes.Native, buf.Bytes())
+	if err != nil {
+		return 0, fmt.Errorf("PrepareInvokeContract error:%s", err)
+	}
+	if result.State == 0 {
+		return 0, fmt.Errorf("prepare invoke failed")
+	}
+	data, err := hex.DecodeString(result.Result.(string))
+	if err != nil {
+		return 0, fmt.Errorf("hex.DecodeString error:%s", err)
+	}
+	balance := new(big.Int).SetBytes(data)
+	return balance.Uint64(), nil
+}
+
+func GetContractAllowance(cVersion byte, contractAddr, fromAddr, toAddr common.Address) (uint64, error) {
+	fromBuf := bytes.NewBuffer(nil)
+	err := fromAddr.Serialize(fromBuf)
+	if err != nil {
+		return 0, fmt.Errorf("from address serialize error:%s", err)
+	}
+	toBuf := bytes.NewBuffer(nil)
+	err = toAddr.Serialize(toBuf)
+	if err != nil {
+		return 0, fmt.Errorf("to address serialize error:%s", err)
+	}
+
+	argBuf := bytes.NewBuffer(nil)
+	err = serialization.WriteVarBytes(argBuf, fromBuf.Bytes())
+	if err != nil {
+		return 0, fmt.Errorf("serialization.WriteVarBytes error:%s", err)
+	}
+	err = serialization.WriteVarBytes(argBuf, toBuf.Bytes())
+	if err != nil {
+		return 0, fmt.Errorf("serialization.WriteVarBytes error:%s", err)
+	}
+	crt := &cstates.Contract{
+		Version: cVersion,
+		Address: contractAddr,
+		Method:  "allowance",
+		Args:    argBuf.Bytes(),
+	}
+	buf := bytes.NewBuffer(nil)
+	err = crt.Serialize(buf)
+	if err != nil {
+		return 0, fmt.Errorf("Serialize contract error:%s", err)
+	}
+	result, err := PrepareInvokeContract(cVersion, vmtypes.Native, buf.Bytes())
+	if err != nil {
+		return 0, fmt.Errorf("PrepareInvokeContract error:%s", err)
+	}
+	if result.State == 0 {
+		return 0, fmt.Errorf("prepare invoke failed")
+	}
+	data, err := hex.DecodeString(result.Result.(string))
+	if err != nil {
+		return 0, fmt.Errorf("hex.DecodeString error:%s", err)
+	}
+	allowance := new(big.Int).SetBytes(data)
+	return allowance.Uint64(), nil
+}
+
+func PrepareInvokeContract(cVersion byte, vmType vmtypes.VmType, invokeCode []byte) (*cstates.PreExecResult, error) {
+	invokePayload := &payload.InvokeCode{
+		Code: vmtypes.VmCode{
+			VmType: vmType,
+			Code:   invokeCode,
+		},
+	}
+	tx := &types.Transaction{
+		Version:    cVersion,
+		TxType:     types.Invoke,
+		Nonce:      uint32(time.Now().Unix()),
+		Payload:    invokePayload,
+		Attributes: make([]*types.TxAttribute, 0, 0),
+		Sigs:       make([]*types.Sig, 0, 0),
+	}
+	return bactor.PreExecuteContract(tx)
+}
+
+func GetGasPrice() (map[string]interface{}, error) {
+	start := bactor.GetCurrentBlockHeight()
+	var gasPrice uint64 = 0
+	var height uint32 = 0
+	var end uint32 = 0
+	if start > MAX_SEARCH_HEIGHT {
+		end = start - MAX_SEARCH_HEIGHT
+	}
+	for i := start; i >= end; i-- {
+		head, err := bactor.GetHeaderByHeight(i)
+		if err == nil && head.TransactionsRoot != common.UINT256_EMPTY {
+			height = i
+			blk, err := bactor.GetBlockByHeight(i)
+			if err != nil {
+				return nil, err
+			}
+			for _, v := range blk.Transactions {
+				gasPrice += v.GasPrice
+			}
+			gasPrice = gasPrice / uint64(len(blk.Transactions))
+			break
+		}
+	}
+	result := map[string]interface{}{"gasprice": gasPrice, "height": height}
+	return result, nil
 }

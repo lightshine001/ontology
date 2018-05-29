@@ -21,22 +21,15 @@ package test
 import (
 	"bytes"
 	"fmt"
+	"github.com/ontio/ontology-crypto/keypair"
+	"github.com/ontio/ontology/common"
+	"github.com/ontio/ontology/core/types"
+	"github.com/ontio/ontology/merkle"
+	vmtypes "github.com/ontio/ontology/smartcontract/types"
+	"github.com/ontio/ontology/vm/neovm"
+	"github.com/stretchr/testify/assert"
 	"math/big"
 	"testing"
-	"time"
-
-	"github.com/ontio/ontology-crypto/keypair"
-	"github.com/ontio/ontology/account"
-	"github.com/ontio/ontology/common"
-	"github.com/ontio/ontology/core/signature"
-	"github.com/ontio/ontology/core/types"
-	ctypes "github.com/ontio/ontology/core/types"
-	"github.com/ontio/ontology/core/utils"
-	"github.com/ontio/ontology/merkle"
-	"github.com/ontio/ontology/vm/neovm"
-	vmtypes "github.com/ontio/ontology/smartcontract/types"
-	"github.com/stretchr/testify/assert"
-	"encoding/json"
 )
 
 func TestMerkleVerifier(t *testing.T) {
@@ -83,28 +76,22 @@ func TestMerkleVerifier(t *testing.T) {
 }
 
 func TestCodeHash(t *testing.T) {
-	code, _ := common.HexToBytes("")
+	code, _ := common.HexToBytes("120203")
 	vmcode := vmtypes.VmCode{vmtypes.NEOVM, code}
 	codehash := vmcode.AddressFromVmCode()
-	assert.Contains(t,codehash.ToHexString(),"")
+	assert.Equal(t, codehash[0], byte(vmtypes.NEOVM))
 }
 
 func TestTxDeserialize(t *testing.T) {
-	bys, _ := common.HexToBytes("")
+	bys, _ := common.HexToBytes("00d175aed22900000000000000000886000000000000000000000000000000000000000000000000000080206700008097b70f436f225c42b14c2afc1d3bc582abd141000700c104696e697401002436323834333632382d313863622d343938332d623862622d38326633326464333139666500")
 	var txn types.Transaction
-	err := txn.Deserialize(bytes.NewReader(bys));
+	err := txn.Deserialize(bytes.NewReader(bys))
 	assert.Nil(t, err)
-
-	assert.Contains(t,txn.TxType,0)
 }
 func TestAddress(t *testing.T) {
 	pubkey, _ := common.HexToBytes("120203a4e50edc1e59979442b83f327030a56bffd08c2de3e0a404cefb4ed2cc04ca3e")
-	pk, err := keypair.DeserializePublicKey(pubkey)
+	_, err := keypair.DeserializePublicKey(pubkey)
 	assert.Nil(t, err)
-
-	ui60 := types.AddressFromPubKey(pk)
-	addr := common.ToHexString(ui60[:])
-	assert.Contains(t,addr,0)
 }
 func TestMultiPubKeysAddress(t *testing.T) {
 	pubkey, _ := common.HexToBytes("120203a4e50edc1e59979442b83f327030a56bffd08c2de3e0a404cefb4ed2cc04ca3e")
@@ -115,55 +102,10 @@ func TestMultiPubKeysAddress(t *testing.T) {
 	pk2, err := keypair.DeserializePublicKey(pubkey2)
 	assert.Nil(t, err)
 
-	ui60, _ := types.AddressFromMultiPubKeys([]keypair.PublicKey{pk, pk2}, 1)
-	addr := common.ToHexString(ui60[:])
-	assert.Contains(t,addr,0)
+	_, err = types.AddressFromMultiPubKeys([]keypair.PublicKey{pk, pk2}, 1)
+	assert.Nil(t, err)
 }
 
-func TestInvokefunction(t *testing.T) {
-	var funcName = "Get"
-	builder := neovm.NewParamsBuilder(new(bytes.Buffer))
-	err := BuildSmartContractParamInter(builder, []interface{}{funcName, []interface{}{[]byte("key")}})
-	assert.Nil(t, err)
-
-	codeParams := builder.ToArray()
-	op_verify,_ := common.HexToBytes("69")
-	codeaddress,_ := common.HexToBytes("809690ff6a5244cca5e64face79914d59daef527")
-
-	tx := utils.NewInvokeTransaction(vmtypes.VmCode{
-		VmType: vmtypes.NEOVM,
-		Code:   bytes.Join([][]byte{codeParams},bytes.Join([][]byte{op_verify},codeaddress)),
-	})
-	tx.Nonce = uint32(time.Now().Unix())
-
-	acct := account.Open(account.WALLET_FILENAME, []byte("passwordtest"))
-	acc, err := acct.GetDefaultAccount()
-	//pubkey := keypair.SerializePublicKey(acc.PubKey())
-	assert.Nil(t, err)
-	hash := tx.Hash()
-	sign, _ := signature.Sign(acc, hash[:])
-	tx.Sigs = append(tx.Sigs, &ctypes.Sig{
-		PubKeys: []keypair.PublicKey{acc.PublicKey},
-		M:       1,
-		SigData: [][]byte{sign},
-	})
-
-	txbf := new(bytes.Buffer)
-	err = tx.Serialize(txbf);
-	assert.Nil(t, err)
-
-	var req = map[string]interface{}{
-		"Action":  "sendrawtransaction",
-		"Version": "1.0.0",
-		"Data":    common.ToHexString(txbf.Bytes()),
-	}
-	resp, err := Request("POST", req, addr+"/api/v1/transaction?preExec=1")
-	if err != nil {
-		assert.Error(t,err)
-	}
-	r, _ := json.Marshal(resp)
-	assert.Contains(t,string(r),"SUCCESS")
-}
 func BuildSmartContractParamInter(builder *neovm.ParamsBuilder, smartContractParams []interface{}) error {
 	for i := len(smartContractParams) - 1; i >= 0; i-- {
 		switch v := smartContractParams[i].(type) {

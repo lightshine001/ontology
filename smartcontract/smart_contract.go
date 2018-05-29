@@ -1,19 +1,20 @@
-// Copyright 2017 The Ontology Authors
-// This file is part of the Ontology library.
-//
-// The Ontology library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// The Ontology library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with the Ontology library. If not, see <http://www.gnu.org/licenses/>.
-
+/*
+ * Copyright (C) 2018 The ontology Authors
+ * This file is part of The ontology library.
+ *
+ * The ontology is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The ontology is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with The ontology.  If not, see <http://www.gnu.org/licenses/>.
+ */
 package smartcontract
 
 import (
@@ -28,6 +29,7 @@ import (
 	"github.com/ontio/ontology/smartcontract/context"
 	"github.com/ontio/ontology/smartcontract/event"
 	"github.com/ontio/ontology/smartcontract/service/native"
+	_ "github.com/ontio/ontology/smartcontract/service/native/init"
 	"github.com/ontio/ontology/smartcontract/service/neovm"
 	"github.com/ontio/ontology/smartcontract/service/wasmvm"
 	"github.com/ontio/ontology/smartcontract/states"
@@ -52,6 +54,7 @@ type SmartContract struct {
 	Engine        Engine
 	Code          stypes.VmCode
 	Notifications []*event.NotifyEventInfo // all execute smart contract event notify info
+	Gas           uint64
 }
 
 // Config describe smart contract need parameters configuration
@@ -96,7 +99,7 @@ func (this *SmartContract) EntryContext() *context.Context {
 
 // PopContext pop smart contract current context
 func (this *SmartContract) PopContext() {
-	if len(this.Contexts) > 0 {
+	if len(this.Contexts) > 1 {
 		this.Contexts = this.Contexts[:len(this.Contexts)-1]
 	}
 }
@@ -106,13 +109,21 @@ func (this *SmartContract) PushNotifications(notifications []*event.NotifyEventI
 	this.Notifications = append(this.Notifications, notifications...)
 }
 
+func (this *SmartContract) CheckUseGas(gas uint64) bool {
+	if this.Gas < gas {
+		return false
+	}
+	this.Gas -= gas
+	return true
+}
+
 // Execute is smart contract execute manager
 // According different vm type to launch different service
 func (this *SmartContract) Execute() (interface{}, error) {
 	var engine Engine
 	switch this.Code.VmType {
 	case stypes.Native:
-		service := &native.NativeService{
+		engine = &native.NativeService{
 			CloneCache: this.CloneCache,
 			Code:       this.Code.Code,
 			Tx:         this.Config.Tx,
@@ -121,7 +132,6 @@ func (this *SmartContract) Execute() (interface{}, error) {
 			ContextRef: this,
 			ServiceMap: make(map[string]native.Handler),
 		}
-		engine = service
 	case stypes.NEOVM:
 		engine = &neovm.NeoVmService{
 			Store:      this.Store,
@@ -225,7 +235,6 @@ func (this *SmartContract) CheckWitness(address common.Address) bool {
 			}
 		}
 	}
-
 	return false
 }
 

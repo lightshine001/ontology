@@ -25,25 +25,26 @@ import (
 	"time"
 
 	"github.com/ontio/ontology/common/log"
+	"github.com/ontio/ontology/core/ledger"
 )
 
 type SyncCheckReq struct {
 	msg      ConsensusMsg
 	peerIdx  uint32
-	blockNum uint64
+	blockNum uint32
 }
 
 type BlockSyncReq struct {
 	targetPeers    []uint32
-	startBlockNum  uint64
-	targetBlockNum uint64 // targetBlockNum == 0, as one cancel syncing request
+	startBlockNum  uint32
+	targetBlockNum uint32 // targetBlockNum == 0, as one cancel syncing request
 }
 
 type PeerSyncer struct {
 	lock          sync.Mutex
 	peerIdx       uint32
-	nextReqBlkNum uint64
-	targetBlkNum  uint64
+	nextReqBlkNum uint32
+	targetBlkNum  uint32
 	active        bool
 
 	server *Server
@@ -67,8 +68,8 @@ type Syncer struct {
 	server *Server
 
 	maxRequestPerPeer int
-	nextReqBlkNum     uint64
-	targetBlkNum      uint64
+	nextReqBlkNum     uint32
+	targetBlkNum      uint32
 
 	syncCheckReqC  chan *SyncCheckReq
 	blockSyncReqC  chan *BlockSyncReq
@@ -76,7 +77,7 @@ type Syncer struct {
 	blockFromPeerC chan *BlockMsgFromPeer
 
 	peers         map[uint32]*PeerSyncer
-	pendingBlocks map[uint64]BlockFromPeers // index by blockNum
+	pendingBlocks map[uint32]BlockFromPeers // index by blockNum
 }
 
 func newSyncer(server *Server) *Syncer {
@@ -89,7 +90,7 @@ func newSyncer(server *Server) *Syncer {
 		syncMsgC:          make(chan *SyncMsg, 256),
 		blockFromPeerC:    make(chan *BlockMsgFromPeer, 64),
 		peers:             make(map[uint32]*PeerSyncer),
-		pendingBlocks:     make(map[uint64]BlockFromPeers),
+		pendingBlocks:     make(map[uint32]BlockFromPeers),
 	}
 }
 
@@ -103,7 +104,7 @@ func (self *Syncer) stop() {
 	close(self.blockFromPeerC)
 
 	self.peers = make(map[uint32]*PeerSyncer)
-	self.pendingBlocks = make(map[uint64]BlockFromPeers)
+	self.pendingBlocks = make(map[uint32]BlockFromPeers)
 }
 
 func (self *Syncer) run() {
@@ -122,12 +123,15 @@ func (self *Syncer) run() {
 				continue
 			}
 
-			log.Infof("server %d, got sync req(%d, %d) to %d",
+			log.Infof("server %d, got sync req(%d, %d) to %v",
 				self.server.Index, req.startBlockNum, req.targetBlockNum, req.targetPeers)
 			if req.startBlockNum <= self.server.GetCommittedBlockNo() {
 				req.startBlockNum = self.server.GetCommittedBlockNo() + 1
 				log.Infof("server %d, sync req start change to %d",
 					self.server.Index, req.startBlockNum)
+				if req.startBlockNum > req.targetBlockNum {
+					continue
+				}
 			}
 			if err := self.onNewBlockSyncReq(req); err != nil {
 				log.Errorf("server %d failed to handle new block sync req: %s", self.server.Index, err)
@@ -139,6 +143,7 @@ func (self *Syncer) run() {
 					p.msgC <- syncMsg.msg
 				} else {
 					// report err
+					p.msgC <- nil
 				}
 			} else {
 				// report error
@@ -161,7 +166,15 @@ func (self *Syncer) run() {
 				continue
 			}
 			for self.nextReqBlkNum <= self.targetBlkNum {
-				blk := self.blockConsensusDone(self.pendingBlocks[self.nextReqBlkNum])
+				// FIXME: compete with ledger syncing
+				var blk *Block
+				if self.nextReqBlkNum <= ledger.DefLedger.GetCurrentBlockHeight() {
+					blk, _ = self.server.chainStore.GetBlock(self.nextReqBlkNum)
+				}
+				if blk == nil {
+					blk = self.blockConsensusDone(self.pendingBlocks[self.nextReqBlkNum])
+				}
+
 				if blk == nil {
 					break
 				}
@@ -180,6 +193,11 @@ func (self *Syncer) run() {
 				self.server.stateMgr.StateEventC <- &StateEvent{
 					Type:     SyncDone,
 					blockNum: self.targetBlkNum,
+				}
+
+				// stop all sync-peers
+				for _, syncPeer := range self.peers {
+					syncPeer.stop(true)
 				}
 
 				// reset to default
@@ -217,7 +235,7 @@ func (self *Syncer) isActive() bool {
 	return self.nextReqBlkNum <= self.targetBlkNum
 }
 
-func (self *Syncer) startPeerSyncer(syncer *PeerSyncer, targetBlkNum uint64) error {
+func (self *Syncer) startPeerSyncer(syncer *PeerSyncer, targetBlkNum uint32) error {
 
 	syncer.lock.Lock()
 	defer syncer.lock.Unlock()
@@ -225,7 +243,7 @@ func (self *Syncer) startPeerSyncer(syncer *PeerSyncer, targetBlkNum uint64) err
 	if targetBlkNum > syncer.targetBlkNum {
 		syncer.targetBlkNum = targetBlkNum
 	}
-	if syncer.targetBlkNum > syncer.nextReqBlkNum && !syncer.active {
+	if syncer.targetBlkNum >= syncer.nextReqBlkNum && !syncer.active {
 		syncer.active = true
 		go func() {
 			syncer.run()
@@ -317,7 +335,7 @@ func (self *PeerSyncer) run() {
 	}()
 
 	var err error
-	blkProposers := make(map[uint64]uint32)
+	blkProposers := make(map[uint32]uint32)
 	for self.nextReqBlkNum <= self.targetBlkNum {
 		blkNum := self.nextReqBlkNum
 		if _, present := blkProposers[blkNum]; !present {
@@ -376,7 +394,7 @@ func (self *PeerSyncer) stop(force bool) bool {
 	return false
 }
 
-func (self *PeerSyncer) requestBlock(blkNum uint64) (*Block, error) {
+func (self *PeerSyncer) requestBlock(blkNum uint32) (*Block, error) {
 	msg, err := self.server.constructBlockFetchMsg(blkNum)
 	if err != nil {
 		return nil, err
@@ -391,6 +409,9 @@ func (self *PeerSyncer) requestBlock(blkNum uint64) (*Block, error) {
 
 	select {
 	case msg := <-self.msgC:
+		if msg == nil {
+			return nil, fmt.Errorf("nil block fetch rsp msg received")
+		}
 		switch msg.Type() {
 		case BlockFetchRespMessage:
 			pMsg, ok := msg.(*BlockFetchRespMsg)
@@ -402,12 +423,12 @@ func (self *PeerSyncer) requestBlock(blkNum uint64) (*Block, error) {
 	case <-t.C:
 		return nil, fmt.Errorf("timeout fetch block %d from peer %d", blkNum, self.peerIdx)
 	case <-self.server.quitC:
-		return nil, fmt.Errorf("server %d quit, failed fetching Block %d", self.server.Index, blkNum)
+		return nil, fmt.Errorf("peer syncing %d quit, failed fetching Block %d", self.peerIdx, blkNum)
 	}
 	return nil, fmt.Errorf("failed to get Block %d from peer %d", blkNum, self.peerIdx)
 }
 
-func (self *PeerSyncer) requestBlockInfo(startBlkNum uint64) ([]*BlockInfo_, error) {
+func (self *PeerSyncer) requestBlockInfo(startBlkNum uint32) ([]*BlockInfo_, error) {
 	msg, err := self.server.constructBlockInfoFetchMsg(startBlkNum)
 	if err != nil {
 		return nil, err
@@ -423,6 +444,9 @@ func (self *PeerSyncer) requestBlockInfo(startBlkNum uint64) ([]*BlockInfo_, err
 
 	select {
 	case msg := <-self.msgC:
+		if msg == nil {
+			return nil, fmt.Errorf("nil blockinfo fetch rsp msg received")
+		}
 		switch msg.Type() {
 		case BlockInfoFetchRespMessage:
 			pMsg, ok := msg.(*BlockInfoFetchRespMsg)
@@ -434,12 +458,13 @@ func (self *PeerSyncer) requestBlockInfo(startBlkNum uint64) ([]*BlockInfo_, err
 	case <-t.C:
 		return nil, fmt.Errorf("timeout fetch blockInfo %d from peer %d", startBlkNum, self.peerIdx)
 	case <-self.server.quitC:
-		return nil, fmt.Errorf("server %d quit, failed fetching BlockInfo %d", self.server.Index, startBlkNum)
+		return nil, fmt.Errorf("peer syncer %d - %d quit, failed fetching BlockInfo %d",
+			self.server.Index, self.peerIdx, startBlkNum)
 	}
 	return nil, nil
 }
 
-func (self *PeerSyncer) fetchedBlock(blkNum uint64, block *Block) error {
+func (self *PeerSyncer) fetchedBlock(blkNum uint32, block *Block) error {
 	self.lock.Lock()
 	defer self.lock.Unlock()
 

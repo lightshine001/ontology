@@ -32,8 +32,6 @@ import (
 	actorTypes "github.com/ontio/ontology/consensus/actor"
 	"github.com/ontio/ontology/core/genesis"
 	"github.com/ontio/ontology/core/ledger"
-	ldgractor "github.com/ontio/ontology/core/ledger/actor"
-	"github.com/ontio/ontology/core/payload"
 	"github.com/ontio/ontology/core/signature"
 	"github.com/ontio/ontology/core/types"
 	"github.com/ontio/ontology/core/vote"
@@ -51,6 +49,7 @@ type DbftService struct {
 	timeView          byte
 	blockReceivedTime time.Time
 	started           bool
+	ledger            *ledger.Ledger
 	incrValidator     *increment.IncrementValidator
 	poolActor         *actorTypes.TxPoolActor
 	p2p               *actorTypes.P2PActor
@@ -65,6 +64,7 @@ func NewDbftService(bkAccount *account.Account, txpool, p2p *actor.PID) (*DbftSe
 		Account:       bkAccount,
 		timer:         time.NewTimer(time.Second * 15),
 		started:       false,
+		ledger:        ledger.DefLedger,
 		incrValidator: increment.NewIncrementValidator(10),
 		poolActor:     &actorTypes.TxPoolActor{Pool: txpool},
 		p2p:           &actorTypes.P2PActor{P2P: p2p},
@@ -218,21 +218,16 @@ func (ds *DbftService) CheckSignatures() error {
 		block.Transactions = ds.context.Transactions
 
 		hash := block.Hash()
-		isExist, err := ledger.DefLedger.IsContainBlock(hash)
+		isExist, err := ds.ledger.IsContainBlock(hash)
 		if err != nil {
 			log.Errorf("DefLedger.IsContainBlock Hash:%x error:%s", hash, err)
 			return err
 		}
 		if !isExist {
 			// save block
-			future := ldgractor.DefLedgerPid.RequestFuture(&ldgractor.AddBlockReq{Block: block}, 30*time.Second)
-			result, err := future.Result()
+			err := ds.ledger.AddBlock(block)
 			if err != nil {
 				return fmt.Errorf("CheckSignatures DefLedgerPid.RequestFuture Height:%d error:%s", block.Header.Height, err)
-			}
-			addBlockRsp := result.(*ldgractor.AddBlockRsp)
-			if addBlockRsp.Error != nil {
-				return fmt.Errorf("CheckSignatures AddBlockRsp Height:%d error:%s", block.Header.Height, addBlockRsp.Error)
 			}
 
 			ds.context.State |= BlockGenerated
@@ -241,19 +236,6 @@ func (ds *DbftService) CheckSignatures() error {
 		}
 	}
 	return nil
-}
-
-func (ds *DbftService) CreateBookkeepingTransaction(nonce uint64, fee common.Fixed64) *types.Transaction {
-	log.Debug()
-	//TODO: sysfee
-	bookKeepingPayload := &payload.Bookkeeping{
-		Nonce: uint64(time.Now().UnixNano()),
-	}
-	return &types.Transaction{
-		TxType:     types.BookKeeping,
-		Payload:    bookKeepingPayload,
-		Attributes: []*types.TxAttribute{},
-	}
 }
 
 func (ds *DbftService) ChangeViewReceived(payload *p2pmsg.ConsensusPayload, message *ChangeView) {
@@ -415,7 +397,7 @@ func (ds *DbftService) PrepareRequestReceived(payload *p2pmsg.ConsensusPayload, 
 		return
 	}
 
-	header, err := ledger.DefLedger.GetHeaderByHash(ds.context.PrevHash)
+	header, err := ds.ledger.GetHeaderByHash(ds.context.PrevHash)
 	if err != nil {
 		log.Errorf("PrepareRequestReceived GetHeader failed with ds.context.PrevHash:%x", ds.context.PrevHash)
 		return
@@ -429,12 +411,6 @@ func (ds *DbftService) PrepareRequestReceived(payload *p2pmsg.ConsensusPayload, 
 	prevBlockTimestamp := header.Timestamp
 	if payload.Timestamp <= prevBlockTimestamp || payload.Timestamp > uint32(time.Now().Add(time.Minute*10).Unix()) {
 		log.Info(fmt.Sprintf("Prepare Reques tReceived: Timestamp incorrect: %d", payload.Timestamp))
-		return
-	}
-
-	if len(message.Transactions) == 0 || message.Transactions[0].TxType != types.BookKeeping {
-		log.Error("PrepareRequestReceived first transaction type is not bookkeeping")
-		ds.RequestChangeView()
 		return
 	}
 
@@ -459,28 +435,19 @@ func (ds *DbftService) PrepareRequestReceived(payload *p2pmsg.ConsensusPayload, 
 	ds.context.Signatures = make([][]byte, len(ds.context.Bookkeepers))
 	ds.context.Signatures[payload.BookkeeperIndex] = message.Signature
 
-	for _, tx := range ds.context.Transactions[1:] {
-		if tx.TxType == types.BookKeeping {
-			log.Error("PrepareRequestReceived non-first transaction type is bookking")
-			ds.context = backupContext
-			ds.RequestChangeView()
-			return
-		}
-	}
-
-	if len(ds.context.Transactions) > 1 {
-		height := ds.context.Height
+	if len(ds.context.Transactions) > 0 {
+		height := ds.context.Height - 1
 		start, end := ds.incrValidator.BlockRange()
 
 		validHeight := height
-		if height == end {
+		if height+1 == end {
 			validHeight = start
 		} else {
 			ds.incrValidator.Clean()
-			log.Infof("incr validator block height %v != ledger block height %v", end-1, height)
+			log.Infof("incr validator block height %v != ledger block height %v", int(end)-1, height)
 		}
 
-		if err := ds.poolActor.VerifyBlock(ds.context.Transactions[1:], validHeight); err != nil {
+		if err := ds.poolActor.VerifyBlock(ds.context.Transactions, validHeight); err != nil {
 			log.Error("PrepareRequestReceived new transaction verification failed, will not sent Prepare Response", err)
 			ds.context = backupContext
 			ds.RequestChangeView()
@@ -488,7 +455,7 @@ func (ds *DbftService) PrepareRequestReceived(payload *p2pmsg.ConsensusPayload, 
 			return
 		}
 
-		for _, tx := range ds.context.Transactions[1:] {
+		for _, tx := range ds.context.Transactions {
 			if err := ds.incrValidator.Verify(tx, validHeight); err != nil {
 				log.Error("PrepareRequestReceived new transaction increment verification failed, will not sent Prepare Response", err)
 				ds.context = backupContext
@@ -496,7 +463,6 @@ func (ds *DbftService) PrepareRequestReceived(payload *p2pmsg.ConsensusPayload, 
 				return
 			}
 		}
-
 	}
 
 	ds.context.NextBookkeepers, err = vote.GetValidators(ds.context.Transactions)
@@ -652,8 +618,8 @@ func (ds *DbftService) start() {
 	log.Debug()
 	ds.started = true
 
-	if config.Parameters.GenBlockTime > config.MIN_GEN_BLOCK_TIME {
-		genesis.GenBlockTime = time.Duration(config.Parameters.GenBlockTime) * time.Second
+	if config.DefConfig.Genesis.DBFT.GenBlockTime > config.MIN_GEN_BLOCK_TIME {
+		genesis.GenBlockTime = time.Duration(config.DefConfig.Genesis.DBFT.GenBlockTime) * time.Second
 	} else {
 		log.Warn("The Generate block time should be longer than 2 seconds, so set it to be default 6 seconds.")
 	}
@@ -676,7 +642,7 @@ func (ds *DbftService) Timeout() {
 		ds.context.State |= RequestSent
 		if !ds.context.State.HasFlag(SignatureSent) {
 			now := uint32(time.Now().Unix())
-			header, err := ledger.DefLedger.GetHeaderByHash(ds.context.PrevHash)
+			header, err := ds.ledger.GetHeaderByHash(ds.context.PrevHash)
 			if err != nil {
 				log.Errorf("[Timeout] GetHeader PrevHash:%x error:%s", ds.context.PrevHash, err)
 				return
@@ -704,17 +670,13 @@ func (ds *DbftService) Timeout() {
 				validHeight = start
 			} else {
 				ds.incrValidator.Clean()
-				log.Infof("incr validator block height %v != ledger block height %v", end-1, height)
+				log.Infof("incr validator block height %v != ledger block height %v", int(end)-1, height)
 			}
 
-			log.Infof("current block Height %v, increment validator block cache size %v", height, height+1-validHeight)
+			log.Infof("current block height %v, increment validator block cache range: [%d, %d)", height, start, end)
 			txs := ds.poolActor.GetTxnPool(true, validHeight)
-			// todo : fix feesum calcuation
-			feeSum := common.Fixed64(0)
 
-			txBookkeeping := ds.CreateBookkeepingTransaction(ds.context.Nonce, feeSum)
-			transactions := make([]*types.Transaction, 0, len(txs)+1)
-			transactions = append(transactions, txBookkeeping)
+			transactions := make([]*types.Transaction, 0, len(txs))
 			for _, txEntry := range txs {
 				// TODO optimize to use height in txentry
 				if err := ds.incrValidator.Verify(txEntry.Tx, validHeight); err == nil {

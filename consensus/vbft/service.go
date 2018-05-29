@@ -33,12 +33,17 @@ import (
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/log"
 	actorTypes "github.com/ontio/ontology/consensus/actor"
-	vconfig "github.com/ontio/ontology/consensus/vbft/config"
-	"github.com/ontio/ontology/core/payload"
+	"github.com/ontio/ontology/consensus/vbft/config"
+	"github.com/ontio/ontology/core/genesis"
+	"github.com/ontio/ontology/core/ledger"
 	"github.com/ontio/ontology/core/types"
+	"github.com/ontio/ontology/core/utils"
 	"github.com/ontio/ontology/events"
 	"github.com/ontio/ontology/events/message"
 	p2pmsg "github.com/ontio/ontology/p2pserver/message/types"
+	gover "github.com/ontio/ontology/smartcontract/service/native/governance"
+	"github.com/ontio/ontology/smartcontract/states"
+	stypes "github.com/ontio/ontology/smartcontract/types"
 	"github.com/ontio/ontology/validator/increment"
 )
 
@@ -53,14 +58,21 @@ const (
 	ReBroadcast
 )
 
+const (
+	CAP_MESSAGE_CHANNEL  = 64
+	CAP_ACTION_CHANNEL   = 8
+	CAP_MSG_SEND_CHANNEL = 16
+)
+
 type BftAction struct {
 	Type     BftActionType
+	BlockNum uint32
 	Proposal *blockProposalMsg
 	forEmpty bool
 }
 
 type BlockParticipantConfig struct {
-	BlockNum    uint64
+	BlockNum    uint32
 	L           uint32
 	Vrf         vconfig.VRFValue
 	ChainConfig *vconfig.ChainConfig
@@ -79,16 +91,22 @@ type Server struct {
 	account       *account.Account
 	poolActor     *actorTypes.TxPoolActor
 	p2p           *actorTypes.P2PActor
-	ledger        *actorTypes.LedgerActor
+	ledger        *ledger.Ledger
 	incrValidator *increment.IncrementValidator
 	pid           *actor.PID
 
 	// some config
-	msgHistoryDuration uint64
+	msgHistoryDuration uint32
 
+	//
+	// Note:
+	// 1. locking priority: metaLock > blockpool.Lock > peerpool.Lock
+	// 2. should never take exclusive lock on both blockpool and peerpool at the same time.
+	// 3. msgpool.Lock is independent, should have no exclusive overlap with other locks.
+	//
 	metaLock                 sync.RWMutex
-	completedBlockNum        uint64 // ledger SaveBlockCompleted block num
-	currentBlockNum          uint64
+	completedBlockNum        uint32 // ledger SaveBlockCompleted block num
+	currentBlockNum          uint32
 	config                   *vconfig.ChainConfig
 	currentParticipantConfig *BlockParticipantConfig
 
@@ -110,13 +128,13 @@ type Server struct {
 	quitWg     sync.WaitGroup
 }
 
-func NewVbftServer(account *account.Account, txpool, ledger, p2p *actor.PID) (*Server, error) {
+func NewVbftServer(account *account.Account, txpool, p2p *actor.PID) (*Server, error) {
 	server := &Server{
 		msgHistoryDuration: 64,
 		account:            account,
 		poolActor:          &actorTypes.TxPoolActor{Pool: txpool},
 		p2p:                &actorTypes.P2PActor{P2P: p2p},
-		ledger:             &actorTypes.LedgerActor{Ledger: ledger},
+		ledger:             ledger.DefLedger,
 		incrValidator:      increment.NewIncrementValidator(10),
 	}
 	server.stateMgr = newStateMgr(server)
@@ -131,6 +149,10 @@ func NewVbftServer(account *account.Account, txpool, ledger, p2p *actor.PID) (*S
 	}
 	server.pid = pid
 	server.sub = events.NewActorSubscriber(pid)
+
+	if err := server.initialize(); err != nil {
+		return nil, fmt.Errorf("vbft server start failed: %s", err)
+	}
 	return server, nil
 }
 
@@ -147,17 +169,13 @@ func (self *Server) Receive(context actor.Context) {
 	case *actor.Restart:
 		log.Info("vbft actor restart")
 	case *actorTypes.StartConsensus:
-		if err := self.start(); err != nil {
-			log.Errorf("vbft start failed: %s", err)
-		}
+		log.Info("vbft actor start consensus")
 	case *actorTypes.StopConsensus:
 		self.stop()
 	case *message.SaveBlockCompleteMsg:
 		log.Infof("vbft actor receives block complete event. block height=%d, numtx=%d",
 			msg.Block.Header.Height, len(msg.Block.Transactions))
 		self.handleBlockPersistCompleted(msg.Block)
-	case *p2pmsg.PeerStateUpdate:
-		self.handlePeerStateUpdate(msg)
 	case *p2pmsg.ConsensusPayload:
 		self.NewConsensusPayload(msg)
 
@@ -171,8 +189,7 @@ func (self *Server) GetPID() *actor.PID {
 }
 
 func (self *Server) Start() error {
-	self.pid.Tell(&actorTypes.StartConsensus{})
-	return nil
+	return self.start()
 }
 
 func (self *Server) Halt() error {
@@ -180,62 +197,40 @@ func (self *Server) Halt() error {
 	return nil
 }
 
-func (self *Server) handlePeerStateUpdate(peer *p2pmsg.PeerStateUpdate) {
-	if peer.PeerPubKey == nil {
-		log.Errorf("server %d, invalid peer state update (no pk)", self.Index)
-		return
-	}
-	peerID, err := vconfig.PubkeyID(peer.PeerPubKey)
-	if err != nil {
-		log.Errorf("failed to get peer ID for pubKey: %v", peer.PeerPubKey)
-	}
-	peerIdx, present := self.peerPool.GetPeerIndex(peerID)
-	if !present {
-		log.Errorf("invalid consensus node: %s", peerID.String())
-	}
-
-	log.Infof("peer state update: %d, connect: %t", peerIdx, peer.Connected)
-	if peer.Connected {
-		if _, present := self.msgRecvC[peerIdx]; !present {
-			self.msgRecvC[peerIdx] = make(chan *p2pMsgPayload, 1024)
-		}
-
-		go func() {
-			time.Sleep(5 * time.Second)
-			if err := self.run(peer.PeerPubKey); err != nil {
-				log.Errorf("server %d, processor on peer %d failed: %s",
-					self.Index, peerIdx, err)
-			}
-		}()
-	} else {
-		if C, present := self.msgRecvC[peerIdx]; present {
-			C <- nil
-		}
-	}
-}
-
 func (self *Server) handleBlockPersistCompleted(block *types.Block) {
 	log.Infof("persist block: %d, %x", block.Header.Height, block.Hash())
 
 	self.incrValidator.AddBlock(block)
 
-	if uint64(block.Header.Height) > self.completedBlockNum {
-		self.completedBlockNum = uint64(block.Header.Height)
+	if block.Header.Height > self.completedBlockNum {
+		self.completedBlockNum = block.Header.Height
 	} else {
 		log.Errorf("server %d, persist block %d, vs completed %d",
 			self.Index, block.Header.Height, self.completedBlockNum)
 	}
+	if self.checkNeedUpdateChainConfig(self.completedBlockNum) || self.checkUpdateChainConfig() {
+		err := self.updateChainConfig()
+		if err != nil {
+			log.Errorf("updateChainConfig failed:%s", err)
+		}
+	}
 }
 
 func (self *Server) NewConsensusPayload(payload *p2pmsg.ConsensusPayload) {
-	peerID, err := vconfig.PubkeyID(&payload.Owner)
+	peerID, err := vconfig.PubkeyID(payload.Owner)
 	if err != nil {
 		log.Errorf("failed to get peer ID for pubKey: %v", payload.Owner)
+		return
 	}
 	peerIdx, present := self.peerPool.GetPeerIndex(peerID)
 	if !present {
 		log.Errorf("invalid consensus node: %s", peerID.String())
+		return
 	}
+	if self.peerPool.isNewPeer(peerIdx) {
+		self.peerPool.peerConnected(peerIdx)
+	}
+
 	if C, present := self.msgRecvC[peerIdx]; present {
 		C <- &p2pMsgPayload{
 			fromPeer: peerIdx,
@@ -243,24 +238,23 @@ func (self *Server) NewConsensusPayload(payload *p2pmsg.ConsensusPayload) {
 		}
 	} else {
 		log.Errorf("consensus msg without receiver: %d node: %s", peerIdx, peerID.String())
+		return
 	}
 }
 
 func (self *Server) LoadChainConfig(chainStore *ChainStore) error {
-	self.metaLock.Lock()
-	defer self.metaLock.Unlock()
+	//get chainconfig from genesis block
 
 	block, err := chainStore.GetBlock(chainStore.GetChainedBlockNum())
 	if err != nil {
 		return err
 	}
-
 	var cfg vconfig.ChainConfig
 	if block.getNewChainConfig() != nil {
 		cfg = *block.getNewChainConfig()
 	} else {
 		cfgBlock := block
-		if block.getLastConfigBlockNum() != math.MaxUint64 {
+		if block.getLastConfigBlockNum() != math.MaxUint32 {
 			cfgBlock, err = chainStore.GetBlock(block.getLastConfigBlockNum())
 			if err != nil {
 				return fmt.Errorf("failed to get cfg block: %s", err)
@@ -271,18 +265,23 @@ func (self *Server) LoadChainConfig(chainStore *ChainStore) error {
 		}
 		cfg = *cfgBlock.getNewChainConfig()
 	}
+	self.metaLock.Lock()
 	self.config = &cfg
-	if self.config.View == 0 {
-		panic("invalid view")
-	}
+	self.metaLock.Unlock()
 
+	self.metaLock.RLock()
+	defer self.metaLock.RUnlock()
+
+	if self.config.View == 0 || self.config.MaxBlockChangeView == 0 {
+		panic("invalid view or maxblockchangeview ")
+	}
 	// update msg delays
-	makeProposalTimeout = time.Duration(cfg.BlockMsgDelay * 2)
-	make2ndProposalTimeout = time.Duration(cfg.BlockMsgDelay)
-	endorseBlockTimeout = time.Duration(cfg.HashMsgDelay * 2)
-	commitBlockTimeout = time.Duration(cfg.HashMsgDelay * 3)
-	peerHandshakeTimeout = time.Duration(cfg.PeerHandshakeTimeout)
-	zeroTxBlockTimeout = time.Duration(cfg.BlockMsgDelay * 3)
+	makeProposalTimeout = time.Duration(self.config.BlockMsgDelay * 2)
+	make2ndProposalTimeout = time.Duration(self.config.BlockMsgDelay)
+	endorseBlockTimeout = time.Duration(self.config.HashMsgDelay * 2)
+	commitBlockTimeout = time.Duration(self.config.HashMsgDelay * 3)
+	peerHandshakeTimeout = time.Duration(self.config.PeerHandshakeTimeout)
+	zeroTxBlockTimeout = time.Duration(self.config.BlockMsgDelay * 3)
 	// TODO: load sealed blocks from chainStore
 
 	// protected by server.metaLock
@@ -291,7 +290,12 @@ func (self *Server) LoadChainConfig(chainStore *ChainStore) error {
 
 	log.Infof("committed: %d, current block no: %d", self.GetCommittedBlockNo(), self.GetCurrentBlockNo())
 
-	self.currentParticipantConfig, err = self.buildParticipantConfig(self.GetCurrentBlockNo(), self.config)
+	block, blockHash := self.blockPool.getSealedBlock(self.GetCommittedBlockNo())
+	if block == nil {
+		return fmt.Errorf("failed to get sealed block (%d)", self.GetCommittedBlockNo())
+	}
+
+	self.currentParticipantConfig, err = self.buildParticipantConfig(self.GetCurrentBlockNo(), block, blockHash, self.config)
 	if err != nil {
 		return fmt.Errorf("failed to build participant config: %s", err)
 	}
@@ -299,25 +303,98 @@ func (self *Server) LoadChainConfig(chainStore *ChainStore) error {
 	return nil
 }
 
+func (self *Server) getChainConfig() (*vconfig.ChainConfig, error) {
+	config, err := self.chainStore.GetVbftConfigInfo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get chainconfig from leveldb: %s", err)
+	}
+
+	peersinfo, err := self.chainStore.GetPeersConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get peersinfo from leveldb: %s", err)
+	}
+	cfg, err := vconfig.GenesisChainConfig(config, peersinfo)
+	if err != nil {
+		return nil, fmt.Errorf("GenesisChainConfig failed: %s", err)
+	}
+	goverview, err := self.chainStore.GetGovernanceView()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get governanceview failed:%s", err)
+	}
+	cfg.View = uint32(goverview.View.Uint64())
+	return cfg, err
+}
+
+func (self *Server) nonConsensusNode() bool {
+	return self.Index == math.MaxUint32
+}
+
+//updateChainCofig
 func (self *Server) updateChainConfig() error {
+
+	block, err := self.chainStore.GetBlock(self.completedBlockNum)
+	if err != nil {
+		return fmt.Errorf("GetBlockInfo failed:%s", err)
+	}
+	if block.Info.NewChainConfig == nil {
+		return fmt.Errorf("GetNewChainConfig failed")
+	}
 	self.metaLock.Lock()
-	defer self.metaLock.Unlock()
+	self.config = block.Info.NewChainConfig
+	self.metaLock.Unlock()
+
+	self.metaLock.RLock()
+	defer self.metaLock.RUnlock()
 
 	// TODO
-
 	// 1. update peer pool
-	// 2. reset all peer connections, create new connections with new peers
-	// 3. check connections num for state-mgmt
-	// 4. update chainStore
+	// 2. remove nonparticipation consensus node
+	// 3. update statemgr peers
+	// 4. reset remove peer connections, create new connections with new peers
+	peermap := make(map[vconfig.NodeID]uint32)
+	for _, p := range self.config.Peers {
+		peermap[p.ID] = p.Index
+		_, present := self.peerPool.GetPeerIndex(p.ID)
+		if !present {
+			if err := self.peerPool.addPeer(p); err != nil {
+				return fmt.Errorf("failed to add peer %d: %s", p.Index, err)
+			}
+			log.Infof("updateChainConfig add peer index%v,id:%v", p.ID.String(), p.Index)
+		}
+	}
 
+	if self.Index == math.MaxUint32 {
+		id, _ := vconfig.PubkeyID(self.account.PublicKey)
+		index, present := self.peerPool.GetPeerIndex(id)
+		if present {
+			self.Index = index
+			log.Infof("updateChainConfig add index :%d", index)
+		}
+	}
+
+	for id, index := range self.peerPool.IDMap {
+		_, present := peermap[id]
+		if !present {
+			if index == self.Index {
+				self.Index = math.MaxUint32
+				log.Infof("updateChainConfig remove index :%d", index)
+			} else {
+				log.Info("updateChainConfig remove consensus")
+				if C, present := self.msgRecvC[index]; present {
+					C <- nil
+				}
+			}
+			log.Infof("updateChainConfig remove nonparticipation node: index:%v,nodeid:%v len:%d", index, id, len(self.peerPool.IDMap))
+		}
+	}
 	return nil
 }
 
-func (self *Server) start() error {
+func (self *Server) initialize() error {
 	// TODO: load config from chain
 
 	// TODO: configurable log
-	selfNodeId, err := vconfig.PubkeyID(&self.account.PublicKey)
+	selfNodeId, err := vconfig.PubkeyID(self.account.PublicKey)
 	if err != nil {
 		return fmt.Errorf("faied to get account pubkey: %s", err)
 	}
@@ -331,7 +408,7 @@ func (self *Server) start() error {
 	self.chainStore = store
 	log.Info("block store opened")
 
-	self.blockPool, err = newBlockPool(self.msgHistoryDuration, store)
+	self.blockPool, err = newBlockPool(self, self.msgHistoryDuration, store)
 	if err != nil {
 		log.Errorf("init blockpool: %s", err)
 		return fmt.Errorf("init blockpool: %s", err)
@@ -342,9 +419,10 @@ func (self *Server) start() error {
 	self.syncer = newSyncer(self)
 
 	self.msgRecvC = make(map[uint32]chan *p2pMsgPayload)
-	self.msgC = make(chan ConsensusMsg, 64)
-	self.bftActionC = make(chan *BftAction, 8)
-	self.msgSendC = make(chan *SendMsgEvent, 16)
+	self.msgC = make(chan ConsensusMsg, CAP_MESSAGE_CHANNEL)
+	self.bftActionC = make(chan *BftAction, CAP_ACTION_CHANNEL)
+	self.msgSendC = make(chan *SendMsgEvent, CAP_MSG_SEND_CHANNEL)
+
 	self.quitC = make(chan struct{})
 	if err := self.LoadChainConfig(store); err != nil {
 		log.Errorf("failed to load config: %s", err)
@@ -360,8 +438,15 @@ func (self *Server) start() error {
 		log.Infof("added peer: %s", p.ID.String())
 	}
 
-	id, _ := vconfig.PubkeyID(&self.account.PublicKey)
-	self.Index, _ = self.peerPool.GetPeerIndex(id)
+	//index equal math.MaxUint32  is noconsensus node
+	id, _ := vconfig.PubkeyID(self.account.PublicKey)
+	index, present := self.peerPool.GetPeerIndex(id)
+	if present {
+		self.Index = index
+	} else {
+		self.Index = math.MaxUint32
+	}
+
 	self.sub.Subscribe(message.TOPIC_SAVE_BLOCK_COMPLETE)
 	go self.syncer.run()
 	go self.stateMgr.run()
@@ -393,6 +478,31 @@ func (self *Server) start() error {
 	return nil
 }
 
+func (self *Server) start() error {
+
+	// start heartbeat ticker
+	self.timer.startPeerTicker(math.MaxUint32)
+
+	// start peers msg handlers
+	for _, p := range self.config.Peers {
+		peerIdx := p.Index
+		pk := self.peerPool.GetPeerPubKey(peerIdx)
+
+		if _, present := self.msgRecvC[peerIdx]; !present {
+			self.msgRecvC[peerIdx] = make(chan *p2pMsgPayload, 1024)
+		}
+
+		go func() {
+			if err := self.run(pk); err != nil {
+				log.Errorf("server %d, processor on peer %d failed: %s",
+					self.Index, peerIdx, err)
+			}
+		}()
+	}
+
+	return nil
+}
+
 func (self *Server) stop() error {
 
 	self.incrValidator.Clean()
@@ -416,7 +526,7 @@ func (self *Server) stop() error {
 //
 // go routine per net connection
 //
-func (self *Server) run(peerPubKey *keypair.PublicKey) error {
+func (self *Server) run(peerPubKey keypair.PublicKey) error {
 	peerID, err := vconfig.PubkeyID(peerPubKey)
 	if err != nil {
 		return fmt.Errorf("failed to get peer ID for pubKey: %v", peerPubKey)
@@ -425,37 +535,21 @@ func (self *Server) run(peerPubKey *keypair.PublicKey) error {
 	if !present {
 		return fmt.Errorf("invalid consensus node: %s", peerID.String())
 	}
-	if self.peerPool.isNewPeer(peerIdx) {
-		if err := self.peerPool.peerConnected(peerIdx); err != nil {
-			return err
-		}
 
-		// initHandshake
-		if err := self.initHandshake(peerIdx, peerPubKey); err != nil {
-			log.Errorf("failed to initHandshake with peer %s: %s", peerID, err)
-			return err
-		}
+	// broadcast heartbeat
+	self.heartbeat()
 
-		log.Infof("server %d: completed handshake with peer %d, %s", self.Index, peerIdx,
-			peerID.String())
-
-		// new peer connected
-		self.timer.startPeerTicker(peerIdx)
-		self.stateMgr.StateEventC <- &StateEvent{
-			Type: UpdatePeerState,
-			peerState: &PeerState{
-				peerIdx:           peerIdx,
-				connected:         true,
-				chainConfigView:   self.peerPool.getPeer(peerIdx).handShake.ChainConfig.View,
-				committedBlockNum: self.peerPool.getPeer(peerIdx).handShake.CommittedBlockNumber,
-			},
-		}
-	} else {
-		return fmt.Errorf("dup peer")
+	// wait remote msgs
+	if err := self.peerPool.waitPeerConnected(peerIdx); err != nil {
+		return err
 	}
 
 	defer func() {
 		// TODO: handle peer disconnection here
+
+		log.Warnf("server %d: disconnected with peer %d", self.Index, peerIdx)
+		close(self.msgRecvC[peerIdx])
+		delete(self.msgRecvC, peerIdx)
 
 		self.peerPool.peerDisconnected(peerIdx)
 		self.stateMgr.StateEventC <- &StateEvent{
@@ -465,7 +559,6 @@ func (self *Server) run(peerPubKey *keypair.PublicKey) error {
 				connected: false,
 			},
 		}
-		delete(self.msgRecvC, peerIdx)
 	}()
 
 	errC := make(chan error)
@@ -486,16 +579,26 @@ func (self *Server) run(peerPubKey *keypair.PublicKey) error {
 					log.Errorf("server %d failed to get peer %d pubkey", self.Index, fromPeer)
 					continue
 				}
+
+				if msg.Type() == BlockProposalMessage {
+					if proposal := msg.(*blockProposalMsg); proposal != nil {
+						fromPeer = proposal.Block.getProposer()
+						pk = self.peerPool.GetPeerPubKey(proposal.Block.getProposer())
+					}
+				}
+
 				if err := msg.Verify(pk); err != nil {
 					log.Errorf("server %d failed to verify msg, type %d, err: %s",
 						self.Index, msg.Type(), err)
-					return
+					continue
 				}
 
 				if msg.Type() < 4 {
-					log.Debugf("server %d received consensus msg, type: %d", self.Index, msg.Type())
+					log.Infof("server %d received consensus msg, blk %d, type: %d from %d",
+						self.Index, msg.GetBlockNum(), msg.Type(), fromPeer)
 				}
-				self.onConsensusMsg(fromPeer, msg)
+
+				self.onConsensusMsg(fromPeer, msg, hashData(msgData))
 			}
 		}
 	}()
@@ -510,9 +613,14 @@ func (self *Server) getState() ServerState {
 func (self *Server) updateParticipantConfig() error {
 	blkNum := self.GetCurrentBlockNo()
 
+	block, blockHash := self.blockPool.getSealedBlock(blkNum - 1)
+	if block == nil {
+		return fmt.Errorf("failed to get sealed block (%d)", blkNum-1)
+	}
+
 	var err error
 	self.metaLock.Lock()
-	if cfg, err := self.buildParticipantConfig(blkNum, self.config); err == nil {
+	if cfg, err := self.buildParticipantConfig(blkNum, block, blockHash, self.config); err == nil {
 		self.currentParticipantConfig = cfg
 	}
 	self.metaLock.Unlock()
@@ -553,7 +661,8 @@ func (self *Server) startNewRound() error {
 		}
 	}
 
-	if endorses := self.msgPool.GetEndorsementsMsgs(blkNum); len(endorses) > 0 {
+	endorses := self.msgPool.GetEndorsementsMsgs(blkNum)
+	if len(endorses) > 0 {
 		for _, e := range endorses {
 			msg := e.(*blockEndorseMsg)
 			if msg == nil {
@@ -564,17 +673,10 @@ func (self *Server) startNewRound() error {
 					blkNum, msg.EndorsedProposer, err)
 			}
 		}
-		if proposal == nil {
-			if p, proposer, done := self.blockPool.endorseDone(blkNum, self.config.C); done {
-				if p != nil {
-					proposal = p
-				} else {
-					self.fetchProposal(blkNum, proposer)
-				}
-			}
-		}
 	}
-	if commits := self.msgPool.GetCommitMsgs(blkNum); len(commits) > 0 {
+
+	commits := self.msgPool.GetCommitMsgs(blkNum)
+	if len(commits) > 0 {
 		for _, c := range commits {
 			msg := c.(*blockCommitMsg)
 			if msg == nil {
@@ -586,19 +688,29 @@ func (self *Server) startNewRound() error {
 			}
 		}
 	}
-	if proposal != nil {
-		self.processConsensusMsg(proposal)
+	if _, _, done := self.blockPool.commitDone(blkNum, self.config.C, self.config.N); done && len(commits) > 0 {
+		// resend commit msg to msg-processor to restart commit-done processing
+		// Note: commitDone will set Done flag in block-pool, so removed Done flag checking
+		// in commit msg processing.
+		self.blockPool.setCommitDone(blkNum)
+		self.processConsensusMsg(commits[0])
+		return nil
+	} else if _, _, done := self.blockPool.endorseDone(blkNum, self.config.C); done && len(endorses) > 0 {
+		// resend endorse msg to msg-processor to restart endorse-done processing
+		self.processConsensusMsg(endorses[0])
+		return nil
+	} else if proposal != nil {
+		self.processProposalMsg(proposal)
 		return nil
 	}
 
-	txpool := self.poolActor.GetTxnPool(true, uint32(blkNum-1))
-	if len(txpool) != 0 {
-		if self.completedBlockNum+1 == self.currentBlockNum {
+	if self.completedBlockNum+1 == self.currentBlockNum {
+		txpool := self.poolActor.GetTxnPool(true, self.validHeight(blkNum))
+		if len(txpool) != 0 {
 			self.startNewProposal(blkNum)
 		} else {
-			// FIXME: cleanup all history msgs, update current block num, and restart new round
-			log.Infof("server %d, round %d, block %d has persisted",
-				self.Index, self.currentBlockNum, self.completedBlockNum)
+			self.timer.startTxTicker(blkNum)
+			self.timer.StartTxBlockTimeout(blkNum)
 		}
 	} else {
 		self.timer.startTxTicker(blkNum)
@@ -607,13 +719,14 @@ func (self *Server) startNewRound() error {
 	return nil
 }
 
-func (self *Server) startNewProposal(blkNum uint64) error {
+func (self *Server) startNewProposal(blkNum uint32) error {
 	// make proposal
 	if self.isProposer(blkNum, self.Index) {
 		log.Infof("server %d, proposer for block %d", self.Index, blkNum)
 		// FIXME: possible deadlock on channel
 		self.bftActionC <- &BftAction{
 			Type:     MakeProposal,
+			BlockNum: blkNum,
 			forEmpty: false,
 		}
 	} else if self.is2ndProposer(blkNum, self.Index) {
@@ -627,9 +740,9 @@ func (self *Server) startNewProposal(blkNum uint64) error {
 }
 
 // verify consensus messsage, then send msg to processMsgEvent
-func (self *Server) onConsensusMsg(peerIdx uint32, msg ConsensusMsg) {
+func (self *Server) onConsensusMsg(peerIdx uint32, msg ConsensusMsg, msgHash common.Uint256) {
 
-	if self.msgPool.HasMsg(msg) {
+	if self.msgPool.HasMsg(msg, msgHash) {
 		// dup msg checking
 		log.Debugf("dup msg with msg type %d from %d", msg.Type(), peerIdx)
 		return
@@ -642,13 +755,14 @@ func (self *Server) onConsensusMsg(peerIdx uint32, msg ConsensusMsg) {
 			log.Error("invalid msg with proposal msg type")
 			return
 		}
-		// TODO: verify msg
 
 		msgBlkNum := pMsg.GetBlockNum()
 		if msgBlkNum > self.GetCurrentBlockNo() {
 			// for concurrency, support two active consensus round
-			if err := self.msgPool.AddMsg(msg); err != nil {
-				log.Errorf("failed to add proposal msg (%d) to pool", msgBlkNum)
+			if err := self.msgPool.AddMsg(msg, msgHash); err != nil {
+				if err != errDropFarFutureMsg {
+					log.Errorf("failed to add proposal msg (%d) to pool: %s", msgBlkNum, err)
+				}
 				return
 			}
 
@@ -668,7 +782,7 @@ func (self *Server) onConsensusMsg(peerIdx uint32, msg ConsensusMsg) {
 						self.Index, msgBlkNum, pMsg.Block.getProposer(), self.GetCommittedBlockNo())
 					self.timer.C <- &TimerEvent{
 						evtType:  EventPeerHeartbeat,
-						blockNum: uint64(pMsg.Block.getProposer()),
+						blockNum: pMsg.Block.getProposer(),
 					}
 				}
 				return
@@ -683,11 +797,11 @@ func (self *Server) onConsensusMsg(peerIdx uint32, msg ConsensusMsg) {
 			}
 
 		} else {
-			if err := self.msgPool.AddMsg(msg); err != nil {
+			if err := self.msgPool.AddMsg(msg, msgHash); err != nil {
 				log.Errorf("failed to add proposal msg (%d) to pool", msgBlkNum)
 				return
 			}
-			self.processConsensusMsg(msg)
+			self.processProposalMsg(pMsg)
 		}
 
 	case BlockEndorseMessage:
@@ -702,8 +816,10 @@ func (self *Server) onConsensusMsg(peerIdx uint32, msg ConsensusMsg) {
 		msgBlkNum := pMsg.GetBlockNum()
 		if msgBlkNum > self.GetCurrentBlockNo() {
 			// for concurrency, support two active consensus round
-			if err := self.msgPool.AddMsg(msg); err != nil {
-				log.Errorf("failed to add endorse msg (%d) to pool", msgBlkNum)
+			if err := self.msgPool.AddMsg(msg, msgHash); err != nil {
+				if err != errDropFarFutureMsg {
+					log.Errorf("failed to add endorse msg (%d) to pool: %s", msgBlkNum, err)
+				}
 				return
 			}
 
@@ -722,7 +838,7 @@ func (self *Server) onConsensusMsg(peerIdx uint32, msg ConsensusMsg) {
 						self.Index, msgBlkNum, pMsg.Endorser, self.GetCommittedBlockNo())
 					self.timer.C <- &TimerEvent{
 						evtType:  EventPeerHeartbeat,
-						blockNum: uint64(pMsg.Endorser),
+						blockNum: pMsg.Endorser,
 					}
 				}
 				return
@@ -738,7 +854,7 @@ func (self *Server) onConsensusMsg(peerIdx uint32, msg ConsensusMsg) {
 
 		} else {
 			// add to msg pool
-			if err := self.msgPool.AddMsg(msg); err != nil {
+			if err := self.msgPool.AddMsg(msg, msgHash); err != nil {
 				log.Errorf("failed to add endorse msg (%d) to pool", msgBlkNum)
 				return
 			}
@@ -756,8 +872,10 @@ func (self *Server) onConsensusMsg(peerIdx uint32, msg ConsensusMsg) {
 
 		msgBlkNum := pMsg.GetBlockNum()
 		if msgBlkNum > self.GetCurrentBlockNo() {
-			if err := self.msgPool.AddMsg(msg); err != nil {
-				log.Errorf("failed to add commit msg (%d) to pool", msgBlkNum)
+			if err := self.msgPool.AddMsg(msg, msgHash); err != nil {
+				if err != errDropFarFutureMsg {
+					log.Errorf("failed to add commit msg (%d) to pool: %s", msgBlkNum, err)
+				}
 				return
 			}
 
@@ -777,7 +895,7 @@ func (self *Server) onConsensusMsg(peerIdx uint32, msg ConsensusMsg) {
 						self.Index, msgBlkNum, pMsg.Committer, self.GetCommittedBlockNo())
 					self.timer.C <- &TimerEvent{
 						evtType:  EventPeerHeartbeat,
-						blockNum: uint64(pMsg.Committer),
+						blockNum: pMsg.Committer,
 					}
 				}
 				return
@@ -792,7 +910,7 @@ func (self *Server) onConsensusMsg(peerIdx uint32, msg ConsensusMsg) {
 			}
 		} else {
 			// add to msg pool
-			if err := self.msgPool.AddMsg(msg); err != nil {
+			if err := self.msgPool.AddMsg(msg, msgHash); err != nil {
 				log.Errorf("failed to add commit msg (%d) to pool", msgBlkNum)
 				return
 			}
@@ -811,7 +929,7 @@ func (self *Server) onConsensusMsg(peerIdx uint32, msg ConsensusMsg) {
 			// delayed peer detected, response heartbeat with our chain Info
 			self.timer.C <- &TimerEvent{
 				evtType:  EventPeerHeartbeat,
-				blockNum: uint64(peerIdx),
+				blockNum: peerIdx,
 			}
 		}
 
@@ -822,24 +940,28 @@ func (self *Server) onConsensusMsg(peerIdx uint32, msg ConsensusMsg) {
 			return
 		}
 		var pmsg *blockProposalMsg
-		pMsgs := self.msgPool.GetProposalMsgs(pMsg.BlockNum)
-		for _, msg := range pMsgs {
-			p := msg.(*blockProposalMsg)
-			if p != nil && p.Block.getProposer() == self.Index {
-				log.Infof("server %d rebroadcast proposal to %d, blk %d",
-					self.Index, peerIdx, p.Block.getBlockNum())
-				pmsg = p
-			}
-		}
-
-		if pmsg == nil {
-			blk, _ := self.blockPool.getSealedBlock(pMsg.BlockNum)
-			if blk != nil {
-				pmsg = &blockProposalMsg{
-					Block: blk,
+		if self.Index == pMsg.ProposerID || pMsg.BlockNum == self.GetCurrentBlockNo() {
+			pMsgs := self.msgPool.GetProposalMsgs(pMsg.BlockNum)
+			for _, msg := range pMsgs {
+				p := msg.(*blockProposalMsg)
+				if p != nil && p.Block.getProposer() == pMsg.ProposerID {
+					log.Infof("server %d rebroadcast proposal to %d, blk %d",
+						self.Index, peerIdx, p.Block.getBlockNum())
+					pmsg = p
 				}
 			}
 		}
+		if self.Index == pMsg.ProposerID {
+			if pmsg == nil {
+				blk, _ := self.blockPool.getSealedBlock(pMsg.BlockNum)
+				if blk != nil {
+					pmsg = &blockProposalMsg{
+						Block: blk,
+					}
+				}
+			}
+		}
+
 		if pmsg != nil {
 			log.Infof("server %d, handle proposal fetch %d from %d",
 				self.Index, pMsg.BlockNum, peerIdx)
@@ -847,9 +969,6 @@ func (self *Server) onConsensusMsg(peerIdx uint32, msg ConsensusMsg) {
 				ToPeer: peerIdx,
 				Msg:    pmsg,
 			}
-		} else {
-			log.Errorf("server %d, failed to handle proposal fetch %d from %d",
-				self.Index, pMsg.BlockNum, peerIdx)
 		}
 
 	case BlockFetchMessage:
@@ -923,6 +1042,56 @@ func (self *Server) onConsensusMsg(peerIdx uint32, msg ConsensusMsg) {
 	}
 }
 
+func (self *Server) processProposalMsg(msg *blockProposalMsg) {
+	msgBlkNum := msg.GetBlockNum()
+	blk, _ := self.blockPool.getSealedBlock(msg.GetBlockNum() - 1)
+	if blk == nil {
+		log.Errorf("BlockProposal failed to GetPreBlock:%d", (msg.GetBlockNum() - 1))
+		return
+	}
+	prevBlockTimestamp := blk.Block.Header.Timestamp
+	currentBlockTimestamp := msg.Block.Block.Header.Timestamp
+	if currentBlockTimestamp <= prevBlockTimestamp || currentBlockTimestamp > uint32(time.Now().Add(time.Minute*10).Unix()) {
+		log.Errorf("BlockPrposalMessage check  blocknum:%d,prevBlockTimestamp:%d,currentBlockTimestamp:%d", msg.GetBlockNum(), prevBlockTimestamp, currentBlockTimestamp)
+		return
+	}
+	txs := msg.Block.Block.Transactions
+	if len(txs) > 0 {
+		height := uint32(msgBlkNum) - 1
+		start, end := self.incrValidator.BlockRange()
+
+		validHeight := height
+		if height+1 == end {
+			validHeight = start
+		} else {
+			self.incrValidator.Clean()
+			log.Infof("incr validator block height %v != ledger block height %v", int(end)-1, height)
+		}
+		// start new routine to verify txs in proposal block
+		go func() {
+			if err := self.poolActor.VerifyBlock(txs, validHeight); err != nil && err != actor.ErrTimeout {
+				log.Errorf("server %d verify proposal blk from %d failed, blk %d, txs %d, err: %s",
+					self.Index, msg.Block.getProposer(), msgBlkNum, len(txs), err)
+				return
+			} else if err == actor.ErrTimeout {
+				log.Errorf("server %d verify proposal blk from %d timedout, blk %d, txs %d, err: %s",
+					self.Index, msg.Block.getProposer(), msgBlkNum, len(txs), err)
+			}
+			for _, tx := range txs {
+				if err := self.incrValidator.Verify(tx, validHeight); err != nil {
+					log.Errorf("server %d verify proposal tx from %d failed, blk %d, txs %d, err: %s",
+						self.Index, msg.Block.getProposer(), msgBlkNum, len(txs), err)
+					return
+				}
+			}
+			self.processConsensusMsg(msg)
+		}()
+	} else {
+		// empty block, process directly
+		self.processConsensusMsg(msg)
+	}
+}
+
 func (self *Server) processConsensusMsg(msg ConsensusMsg) {
 	if isReady(self.getState()) {
 		self.msgC <- msg
@@ -952,21 +1121,17 @@ func (self *Server) processMsgEvent() error {
 					if err == errDupProposal {
 						// TODO: faulty proposer detected
 					}
-					return fmt.Errorf("failed to add block proposal (%d): %s", msgBlkNum, err)
+					log.Errorf("failed to add block proposal (%d): %s", msgBlkNum, err)
+					return nil
 				}
 
 				if self.isProposer(msgBlkNum, pMsg.Block.getProposer()) {
 					// check if agreed on prev-blockhash
-					prevBlk, prevBlkHash := self.blockPool.getSealedBlock(msgBlkNum - 1)
-					if prevBlk == nil {
-						// TODO: has no candidate proposals for prevBlock, should restart syncing
-						return fmt.Errorf("failed to get prevBlock of current round (%d)", msgBlkNum)
-					}
-					prevBlkHash2 := pMsg.Block.getPrevBlockHash()
-					if bytes.Compare(prevBlkHash.ToArray(), prevBlkHash2.ToArray()) != 0 {
-						// continue waiting for more proposals
-						// FIXME
-						return fmt.Errorf("inconsistent prev-block hash with proposer (%d)", msgBlkNum)
+					if err := self.verifyPrevBlockHash(msgBlkNum, pMsg); err != nil {
+						// continue
+						log.Errorf("failed verify prevBlockHash from proposer %d, blk %d",
+							pMsg.Block.getProposer(), msgBlkNum)
+						return nil
 					}
 
 					// stop proposal timer
@@ -1013,7 +1178,8 @@ func (self *Server) processMsgEvent() error {
 			if msgBlkNum == self.GetCurrentBlockNo() {
 				// add endorse to block-pool
 				if err := self.blockPool.newBlockEndorsement(pMsg); err != nil {
-					return fmt.Errorf("failed to add endorsement (%d): %s", msgBlkNum, err)
+					log.Errorf("failed to add endorsement (%d): %s", msgBlkNum, err)
+					return nil
 				}
 				log.Infof("server %d received endorse from %d, for proposer %d, block %d, empty: %t",
 					self.Index, pMsg.Endorser, pMsg.EndorsedProposer, msgBlkNum, pMsg.EndorseForEmpty)
@@ -1026,7 +1192,7 @@ func (self *Server) processMsgEvent() error {
 					//                      start WaitEndorsementTimer
 
 					// TODO: should only count endorsements from endorsers
-					if proposal, proposer, done := self.blockPool.endorseDone(msgBlkNum, self.config.C); done {
+					if proposer, forEmpty, done := self.blockPool.endorseDone(msgBlkNum, self.config.C); done {
 						// stop endorse timer
 						if err := self.timer.CancelEndorseMsgTimer(msgBlkNum); err != nil {
 							log.Errorf("failed to cancel endorse timer, blockNum %d, err: %s", msgBlkNum, err)
@@ -1036,13 +1202,14 @@ func (self *Server) processMsgEvent() error {
 							log.Errorf("failed to cancel empty endorse timer, blockNum %d, err: %s", msgBlkNum, err)
 						}
 
+						proposal := self.findBlockProposal(msgBlkNum, proposer, forEmpty)
 						if proposal == nil {
-							self.fetchProposal(msgBlkNum, proposer)
-							log.Infof("server %d endorse %d done without proposal, fetching proposal", self.Index, msgBlkNum)
+							log.Infof("server %d endorse %d done, waiting proposal from %d", self.Index, msgBlkNum, proposer)
 						} else if self.isCommitter(msgBlkNum, self.Index) {
 							// make endorsement
-							if err := self.makeCommitment(proposal, msgBlkNum); err != nil {
-								return fmt.Errorf("failed to endorse for block %d: %s", msgBlkNum, err)
+							if err := self.makeCommitment(proposal, msgBlkNum, forEmpty); err != nil {
+								log.Errorf("failed to endorse for block %d: %s", msgBlkNum, err)
+								return nil
 							}
 						}
 					} else {
@@ -1075,29 +1242,34 @@ func (self *Server) processMsgEvent() error {
 				//              else if WaitCommitsTimer has not started:
 				//                      start WaitCommitsTimer
 				if err := self.blockPool.newBlockCommitment(pMsg); err != nil {
-					return fmt.Errorf("failed to add commit msg (%d): %s", msgBlkNum, err)
+					log.Errorf("failed to add commit msg (%d): %s", msgBlkNum, err)
+					return nil
 				}
 
 				log.Infof("server %d received commit from %d, for proposer %d, block %d, empty: %t",
 					self.Index, pMsg.Committer, pMsg.BlockProposer, msgBlkNum, pMsg.CommitForEmpty)
 
-				if !self.blockPool.isCommitHadDone(msgBlkNum) {
-					if proposal, forEmpty, done := self.blockPool.commitDone(msgBlkNum, self.config.C); done {
-						if proposal == nil {
-							// TODO: commit done, but we not have the proposal, should request proposal from neighbours
-							//       commitTimeout handle this
-							return fmt.Errorf("commit done, but proposal not available")
-						}
-
-						// stop commit timer
-						if err := self.timer.CancelCommitMsgTimer(msgBlkNum); err != nil {
-							log.Errorf("failed to cancel endorse timer, blockNum: %d, err: %s", msgBlkNum, err)
-						}
-
-						return self.makeSealed(proposal, forEmpty)
-					} else {
-						// wait commit timeout, nothing to do
+				if proposer, forEmpty, done := self.blockPool.commitDone(msgBlkNum, self.config.C, self.config.N); done {
+					self.blockPool.setCommitDone(msgBlkNum)
+					proposal := self.findBlockProposal(msgBlkNum, proposer, forEmpty)
+					if proposal == nil {
+						// TODO: commit done, but we not have the proposal, should request proposal from neighbours
+						//       commitTimeout handle this
+						log.Infof("server %d commit %d done, waiting proposal",
+							self.Index, msgBlkNum)
+						return nil
 					}
+
+					// stop commit timer
+					if err := self.timer.CancelCommitMsgTimer(msgBlkNum); err != nil {
+						log.Errorf("failed to cancel commit timer, blockNum: %d, err: %s", msgBlkNum, err)
+					}
+
+					if err := self.makeSealed(proposal, forEmpty); err != nil {
+						log.Errorf("failed to seal block %d, err: %s", msgBlkNum, err)
+					}
+				} else {
+					// wait commit timeout, nothing to do
 				}
 
 			} else {
@@ -1124,6 +1296,9 @@ func (self *Server) actionLoop() {
 			case MakeProposal:
 				// this may triggered when block sealed or random backoff of 2nd proposer
 				blkNum := self.GetCurrentBlockNo()
+				if blkNum > action.BlockNum {
+					continue
+				}
 
 				var proposal *blockProposalMsg
 				msgs := self.msgPool.GetProposalMsgs(blkNum)
@@ -1161,7 +1336,7 @@ func (self *Server) actionLoop() {
 					continue
 				}
 				if err := self.sealProposal(action.Proposal, action.forEmpty); err != nil {
-					log.Errorf("%d failed to seal block (%d): %s",
+					log.Errorf("server %d failed to seal block (%d): %s",
 						self.Index, action.Proposal.GetBlockNum(), err)
 				}
 			case FastForward:
@@ -1177,47 +1352,36 @@ func (self *Server) actionLoop() {
 
 					// get pending msgs from msgpool
 					pMsgs := self.msgPool.GetProposalMsgs(blkNum)
-					cMsgs := self.msgPool.GetCommitMsgs(blkNum)
-					if len(cMsgs) <= C || len(pMsgs) == 0 {
-						for _, msg := range pMsgs {
-							p := msg.(*blockProposalMsg)
-							if p != nil {
-								if err := self.blockPool.newBlockProposal(p); err != nil {
-									log.Errorf("server %d failed add proposal in fastforwarding: %s",
-										self.Index, err)
-								}
+					for _, msg := range pMsgs {
+						p := msg.(*blockProposalMsg)
+						if p != nil {
+							if err := self.blockPool.newBlockProposal(p); err != nil {
+								log.Errorf("server %d failed add proposal in fastforwarding: %s",
+									self.Index, err)
 							}
 						}
-						for _, msg := range cMsgs {
-							c := msg.(*blockCommitMsg)
-							if c != nil {
-								if err := self.blockPool.newBlockCommitment(c); err != nil {
-									log.Errorf("server %d failed to add commit in fastforwarding: %s",
-										self.Index, err)
-								}
-							}
-						}
-
-						// catcher doesnot participant in the latest round before catched up
-						// rebroadcast timer will reinit the consensus when halt
-						if err := self.catchConsensus(blkNum); err != nil {
-							log.Infof("server %d fastforward done, catch consensus: %s", self.Index, err)
-						}
-
-						log.Infof("server %d fastforward done at blk %d, no msg", self.Index, blkNum)
-						break
 					}
+
+					cMsgs := self.msgPool.GetCommitMsgs(blkNum)
+					commitMsgs := make([]*blockCommitMsg, 0)
+					for _, msg := range cMsgs {
+						c := msg.(*blockCommitMsg)
+						if c != nil {
+							if err := self.blockPool.newBlockCommitment(c); err == nil {
+								commitMsgs = append(commitMsgs, c)
+							} else {
+								log.Errorf("server %d failed to add commit in fastforwarding: %s",
+									self.Index, err)
+							}
+						}
+					}
+
 					log.Infof("server %d fastforwarding from %d, (%d, %d)",
 						self.Index, self.GetCurrentBlockNo(), len(cMsgs), len(pMsgs))
-
-					// convert to blockCommitMsg array
-					commitMsgs := make([]*blockCommitMsg, 0)
-					for _, m := range cMsgs {
-						c, ok := m.(*blockCommitMsg)
-						if !ok {
-							continue
-						}
-						commitMsgs = append(commitMsgs, c)
+					if len(pMsgs) == 0 && len(cMsgs) == 0 {
+						log.Infof("server %d fastforward done, no msg", self.Index)
+						self.startNewRound()
+						break
 					}
 
 					// check if consensused
@@ -1226,7 +1390,7 @@ func (self *Server) actionLoop() {
 						if err := self.catchConsensus(blkNum); err != nil {
 							log.Infof("server %d fastforward done, catch consensus: %s", self.Index, err)
 						}
-						log.Errorf("server %d fastforward done at blk %d, no consensus", self.Index, blkNum)
+						log.Infof("server %d fastforward done at blk %d, no consensus", self.Index, blkNum)
 						break
 					}
 
@@ -1243,7 +1407,9 @@ func (self *Server) actionLoop() {
 						}
 					}
 					if proposal == nil {
-						log.Errorf("server %d fastforward stopped at blk %d, no proposal", self.Index, blkNum)
+						log.Infof("server %d fastforward stopped at blk %d, no proposal", self.Index, blkNum)
+						self.fetchProposal(blkNum, proposer)
+						self.timer.StartCommitTimer(blkNum)
 						break
 					}
 
@@ -1260,6 +1426,10 @@ func (self *Server) actionLoop() {
 
 			case ReBroadcast:
 				blkNum := self.GetCurrentBlockNo()
+				if blkNum > action.BlockNum {
+					continue
+				}
+
 				proposals := make([]*blockProposalMsg, 0)
 				for _, msg := range self.msgPool.GetProposalMsgs(blkNum) {
 					p := msg.(*blockProposalMsg)
@@ -1302,8 +1472,7 @@ func (self *Server) actionLoop() {
 					}
 				} else if proposal, forEmpty := self.blockPool.getEndorsedProposal(blkNum); proposal != nil {
 					// construct endorse msg
-					blkHash, _ := HashBlock(proposal.Block)
-					if endorseMsg, _ := self.constructEndorseMsg(proposal, blkHash, forEmpty); endorseMsg != nil {
+					if endorseMsg, _ := self.constructEndorseMsg(proposal, forEmpty); endorseMsg != nil {
 						self.broadcast(endorseMsg)
 					}
 				}
@@ -1320,14 +1489,16 @@ func (self *Server) actionLoop() {
 						}
 					}
 					if !committed {
-						if proposal, proposer, done := self.blockPool.endorseDone(blkNum, self.config.C); done {
+						if proposer, forEmpty, done := self.blockPool.endorseDone(blkNum, self.config.C); done {
+							proposal := self.findBlockProposal(blkNum, proposer, forEmpty)
+
 							// consensus ok, make endorsement
 							if proposal == nil {
 								self.fetchProposal(blkNum, proposer)
 								// restart endorsing timer
 								self.timer.StartEndorsingTimer(blkNum)
 								log.Errorf("server %d endorse %d done, but no proposal", self.Index, blkNum)
-							} else if err := self.makeCommitment(proposal, blkNum); err != nil {
+							} else if err := self.makeCommitment(proposal, blkNum, forEmpty); err != nil {
 								log.Errorf("server %d failed to commit block %d on rebroadcasting: %s",
 									self.Index, blkNum, err)
 							}
@@ -1429,14 +1600,22 @@ func (self *Server) processTimerEvent(evt *TimerEvent) error {
 		if !isReady(self.getState()) {
 			return nil
 		}
-		if proposal, proposer, done := self.blockPool.endorseDone(evt.blockNum, self.config.C); done {
+		if proposer, forEmpty, done := self.blockPool.endorseDone(evt.blockNum, self.config.C); done {
+			proposal := self.findBlockProposal(evt.blockNum, proposer, forEmpty)
+
 			// consensus ok, make endorsement
 			if proposal == nil {
 				self.fetchProposal(evt.blockNum, proposer)
 				// restart endorsing timer
 				self.timer.StartEndorsingTimer(evt.blockNum)
 				return fmt.Errorf("endorse %d done, but no proposal available", evt.blockNum)
-			} else if err := self.makeCommitment(proposal, evt.blockNum); err != nil {
+			}
+			if err := self.verifyPrevBlockHash(evt.blockNum, proposal); err != nil {
+				// restart endorsing timer
+				self.timer.StartEndorsingTimer(evt.blockNum)
+				return fmt.Errorf("endorse %d done, but prev blk hash inconsistency: %s", evt.blockNum, err)
+			}
+			if err := self.makeCommitment(proposal, evt.blockNum, forEmpty); err != nil {
 				return fmt.Errorf("failed to endorse for block %d on endorse timeout: %s", evt.blockNum, err)
 			}
 			return nil
@@ -1475,13 +1654,15 @@ func (self *Server) processTimerEvent(evt *TimerEvent) error {
 		if !isReady(self.getState()) {
 			return nil
 		}
-		if proposal, proposer, done := self.blockPool.endorseDone(evt.blockNum, self.config.C); done {
+		if proposer, forEmpty, done := self.blockPool.endorseDone(evt.blockNum, self.config.C); done {
+			proposal := self.findBlockProposal(evt.blockNum, proposer, forEmpty)
+
 			// consensus ok, make endorsement
 			if proposal == nil {
 				self.fetchProposal(evt.blockNum, proposer)
 				// restart timer
 				self.timer.StartEndorseEmptyBlockTimer(evt.blockNum)
-			} else if err := self.makeCommitment(proposal, evt.blockNum); err != nil {
+			} else if err := self.makeCommitment(proposal, evt.blockNum, forEmpty); err != nil {
 				return fmt.Errorf("failed to endorse for block %d on empty endorse timeout: %s", evt.blockNum, err)
 			}
 			return nil
@@ -1516,7 +1697,9 @@ func (self *Server) processTimerEvent(evt *TimerEvent) error {
 			return nil
 		}
 		if !self.blockPool.isCommitHadDone(evt.blockNum) {
-			if proposal, forEmpty, done := self.blockPool.commitDone(evt.blockNum, self.config.C); done {
+			if proposer, forEmpty, done := self.blockPool.commitDone(evt.blockNum, self.config.C, self.config.N); done {
+				self.blockPool.setCommitDone(evt.blockNum)
+				proposal := self.findBlockProposal(evt.blockNum, proposer, forEmpty)
 				if proposal == nil {
 					self.restartSyncing()
 					return fmt.Errorf("commit timeout, consensused proposal not available. need resync")
@@ -1533,36 +1716,25 @@ func (self *Server) processTimerEvent(evt *TimerEvent) error {
 		}
 
 	case EventPeerHeartbeat:
-		//	build heartbeat msg
-		msg, err := self.constructHeartbeatMsg()
-		if err != nil {
-			return fmt.Errorf("failed to build heartbeat msg: %s", err)
-		}
+		self.heartbeat()
 
-		// TODO: check remote peer lastUpdateTime
-		log.Debugf("send heartbeat to peer: %d", evt.blockNum)
-
-		//	send to peer
-		self.msgSendC <- &SendMsgEvent{
-			ToPeer: uint32(evt.blockNum),
-			Msg:    msg,
-		}
 	case EventTxPool:
 		blockNum := self.GetCurrentBlockNo()
-		txpool := self.poolActor.GetTxnPool(true, uint32(blockNum-1))
-		if len(txpool) != 0 {
-			self.timer.stopTxTicker()
-			self.timer.CancelTxBlockTimeout(blockNum)
-			if self.completedBlockNum+1 == self.currentBlockNum {
+		self.timer.stopTxTicker(evt.blockNum)
+		if self.completedBlockNum+1 == self.currentBlockNum {
+			txpool := self.poolActor.GetTxnPool(true, self.validHeight(blockNum))
+			if len(txpool) != 0 {
+				self.timer.CancelTxBlockTimeout(blockNum)
 				self.startNewProposal(blockNum)
 			} else {
-				// FIXME: clean up history msgs, reset currentBlockNum, then restart from forwarding?
-				log.Errorf("server %d, skipped proposing, round %d, persisted %d",
-					self.Index, self.currentBlockNum, self.completedBlockNum)
+				//reset timer, continue waiting txs from txnpool
+				self.timer.startTxTicker(blockNum)
 			}
+		} else {
+			self.timer.startTxTicker(blockNum)
 		}
 	case EventTxBlockTimeout:
-		self.timer.stopTxTicker()
+		self.timer.stopTxTicker(evt.blockNum)
 		self.timer.CancelTxBlockTimeout(evt.blockNum)
 		self.startNewProposal(evt.blockNum)
 	}
@@ -1618,11 +1790,6 @@ func (self *Server) endorseBlock(proposal *blockProposalMsg, forEmpty bool) erro
 		return nil
 	}
 
-	blkHash, err := HashBlock(proposal.Block)
-	if err != nil {
-		return fmt.Errorf("failed to hash proposal block: %s", err)
-	}
-
 	if !forEmpty {
 		if self.blockPool.endorseFailed(blkNum, self.config.C) {
 			forEmpty = true
@@ -1631,7 +1798,7 @@ func (self *Server) endorseBlock(proposal *blockProposalMsg, forEmpty bool) erro
 	}
 
 	// build endorsement msg
-	endorseMsg, err := self.constructEndorseMsg(proposal, blkHash, forEmpty)
+	endorseMsg, err := self.constructEndorseMsg(proposal, forEmpty)
 	if err != nil {
 		return fmt.Errorf("failed to construct endorse msg: %s", err)
 	}
@@ -1644,7 +1811,8 @@ func (self *Server) endorseBlock(proposal *blockProposalMsg, forEmpty bool) erro
 	self.processConsensusMsg(endorseMsg)
 	// if node is endorser of current round
 	if forEmpty || self.isEndorser(blkNum, self.Index) {
-		self.msgPool.AddMsg(endorseMsg)
+		h, _ := HashMsg(endorseMsg)
+		self.msgPool.AddMsg(endorseMsg, h)
 		log.Infof("endorser %d, endorsed block %d, from server %d",
 			self.Index, blkNum, proposal.Block.getProposer())
 		// broadcast my endorsement
@@ -1676,13 +1844,27 @@ func (self *Server) commitBlock(proposal *blockProposalMsg, forEmpty bool) error
 		return nil
 	}
 
-	blkHash, err := HashBlock(proposal.Block)
-	if err != nil {
-		return fmt.Errorf("failed to hash proposal proposal: %s", err)
+	var blkHash common.Uint256
+	if !forEmpty {
+		blkHash = proposal.Block.Block.Hash()
+	} else {
+		if proposal.Block.EmptyBlock == nil {
+			return fmt.Errorf("blk %d proposal from %d has no empty proposal", blkNum, proposal.Block.getProposer())
+		}
+		blkHash = proposal.Block.EmptyBlock.Hash()
+	}
+
+	endorses := make([]*blockEndorseMsg, 0)
+	for _, msg := range self.msgPool.GetEndorsementsMsgs(blkNum) {
+		if e := msg.(*blockEndorseMsg); e != nil {
+			if bytes.Compare(blkHash[:], e.EndorsedBlockHash[:]) == 0 && e.EndorseForEmpty == forEmpty {
+				endorses = append(endorses, e)
+			}
+		}
 	}
 
 	// build commit msg
-	commitMsg, err := self.constructCommitMsg(proposal, blkHash, forEmpty)
+	commitMsg, err := self.constructCommitMsg(proposal, endorses, forEmpty)
 	if err != nil {
 		return fmt.Errorf("failed to construct commit msg: %s", err)
 	}
@@ -1695,7 +1877,8 @@ func (self *Server) commitBlock(proposal *blockProposalMsg, forEmpty bool) error
 	self.processConsensusMsg(commitMsg)
 	// if node is committer of current round
 	if forEmpty || self.isCommitter(blkNum, self.Index) {
-		self.msgPool.AddMsg(commitMsg)
+		h, _ := HashMsg(commitMsg)
+		self.msgPool.AddMsg(commitMsg, h)
 		log.Infof("committer %d, set block %d committed, from server %d",
 			self.Index, blkNum, proposal.Block.getProposer())
 		// broadcast my commitment
@@ -1741,7 +1924,8 @@ func (self *Server) fastForwardBlock(block *Block) error {
 		return nil
 	}
 	if self.GetCurrentBlockNo() == block.getBlockNum() {
-		return self.sealBlock(block, block.isEmpty())
+		// block from peer syncer, there should only one candidate block
+		return self.sealBlock(block, false)
 	}
 	return fmt.Errorf("server %d: fastforward blk %d failed, current blkNum: %d",
 		self.Index, block.getBlockNum(), self.GetCurrentBlockNo())
@@ -1751,7 +1935,8 @@ func (self *Server) sealBlock(block *Block, empty bool) error {
 	sealedBlkNum := block.getBlockNum()
 	if sealedBlkNum < self.GetCurrentBlockNo() {
 		// we already in future round
-		return fmt.Errorf("late seal of %d, current blkNum: %d", sealedBlkNum, self.GetCurrentBlockNo())
+		log.Errorf("late seal of %d, current blkNum: %d", sealedBlkNum, self.GetCurrentBlockNo())
+		return nil
 	} else if sealedBlkNum > self.GetCurrentBlockNo() {
 		// we have lost sync, restarting syncing
 		self.restartSyncing()
@@ -1770,10 +1955,6 @@ func (self *Server) sealBlock(block *Block, empty bool) error {
 	self.blockPool.onBlockSealed(sealedBlkNum)
 
 	_, h := self.blockPool.getSealedBlock(sealedBlkNum)
-	if bytes.Compare(h[:], common.UINT256_EMPTY[:]) == 0 {
-		return fmt.Errorf("failed to seal proposal: nil hash")
-	}
-
 	prevBlkHash := block.getPrevBlockHash()
 	log.Infof("server %d, sealed block %d, proposer %d, prevhash: %s, hash: %s", self.Index,
 		sealedBlkNum, block.getProposer(),
@@ -1787,7 +1968,7 @@ func (self *Server) sealBlock(block *Block, empty bool) error {
 		if sealedBlkNum >= self.currentBlockNum {
 			self.currentBlockNum = sealedBlkNum + 1
 		}
-		defer self.metaLock.Unlock()
+		self.metaLock.Unlock()
 	}
 	return nil
 }
@@ -1799,6 +1980,9 @@ func (self *Server) msgSendLoop() {
 	for {
 		select {
 		case evt := <-self.msgSendC:
+			if self.nonConsensusNode() {
+				continue
+			}
 			payload, err := SerializeVbftMsg(evt.Msg)
 			if err != nil {
 				log.Errorf("server %d failed to serialized msg (type: %d): %s", self.Index, evt.Msg.Type(), err)
@@ -1823,25 +2007,44 @@ func (self *Server) msgSendLoop() {
 	}
 }
 
-// FIXME
-//    copied from dbft
-func (self *Server) createBookkeepingTransaction(nonce uint64, fee uint64) *types.Transaction {
-	log.Debug()
-	//TODO: sysfee
-	bookKeepingPayload := &payload.Bookkeeping{
-		Nonce: uint64(time.Now().UnixNano()),
+//creategovernaceTransaction invoke governance native contract commit_pos
+func (self *Server) creategovernaceTransaction(blkNum uint32) *types.Transaction {
+	init := states.Contract{
+		Address: genesis.GovernanceContractAddress,
+		Method:  gover.COMMIT_DPOS,
 	}
-	return &types.Transaction{
-		TxType:     types.BookKeeping,
-		Payload:    bookKeepingPayload,
-		Attributes: []*types.TxAttribute{},
+	bf := new(bytes.Buffer)
+	init.Serialize(bf)
+	vmCode := stypes.VmCode{
+		VmType: stypes.Native,
+		Code:   bf.Bytes(),
 	}
+	tx := utils.NewInvokeTransaction(vmCode)
+	tx.Nonce = blkNum
+	return tx
 }
 
-func (self *Server) makeProposal(blkNum uint64, forEmpty bool) error {
-	var txs []*types.Transaction
+//checkNeedUpdateChainConfig use blockcount
+func (self *Server) checkNeedUpdateChainConfig(blockNum uint32) bool {
+	if blockNum%self.config.MaxBlockChangeView == 0 {
+		return true
+	}
+	return false
+}
 
-	height := uint32(blkNum) - 1
+//checkUpdateChainConfig query leveldb check is force update
+func (self *Server) checkUpdateChainConfig() bool {
+	force, err := self.chainStore.isUpdate(self.config.View)
+	if err != nil {
+		log.Errorf("checkUpdateChainConfig err:%s", err)
+		return false
+	}
+	log.Debugf("checkUpdateChainConfig force: %v", force)
+	return force
+}
+
+func (self *Server) validHeight(blkNum uint32) uint32 {
+	height := blkNum - 1
 	validHeight := height
 	start, end := self.incrValidator.BlockRange()
 	if height+1 == end {
@@ -1849,20 +2052,46 @@ func (self *Server) makeProposal(blkNum uint64, forEmpty bool) error {
 	} else {
 		self.incrValidator.Clean()
 	}
+	return validHeight
+}
 
-	// FIXME: self.index as nonce??
-	// FIXME: fix feesum calculation
-	txBookkeeping := self.createBookkeepingTransaction(uint64(self.Index), 0)
-	txs = append(txs, txBookkeeping)
+func (self *Server) makeProposal(blkNum uint32, forEmpty bool) error {
+	if blkNum < self.GetCurrentBlockNo() {
+		return fmt.Errorf("server %d ignore deprecatd blk proposal %d, current %d",
+			self.Index, blkNum, self.GetCurrentBlockNo())
+	}
+
+	validHeight := self.validHeight(blkNum)
+	sysTxs := make([]*types.Transaction, 0)
+	userTxs := make([]*types.Transaction, 0)
+
+	//check need upate chainconfig
+	cfg := &vconfig.ChainConfig{}
+	cfg = nil
+	if self.checkNeedUpdateChainConfig(self.currentBlockNum) || self.checkUpdateChainConfig() {
+		chainconfig, err := self.getChainConfig()
+		if err != nil {
+			return fmt.Errorf("getChainConfig failed:%s", err)
+		}
+		self.config = chainconfig
+		cfg = self.config
+		//add transaction invoke governance native commit_pos contract
+		if self.checkNeedUpdateChainConfig(self.currentBlockNum) {
+			sysTxs = append(sysTxs, self.creategovernaceTransaction(blkNum))
+		}
+	}
+	if self.nonConsensusNode() {
+		return fmt.Errorf("%d quit consensus node", self.Index)
+	}
+
 	if !forEmpty {
 		for _, e := range self.poolActor.GetTxnPool(true, uint32(validHeight)) {
 			if err := self.incrValidator.Verify(e.Tx, uint32(validHeight)); err == nil {
-				txs = append(txs, e.Tx)
+				userTxs = append(userTxs, e.Tx)
 			}
 		}
 	}
-
-	proposal, err := self.constructProposalMsg(blkNum, txs)
+	proposal, err := self.constructProposalMsg(blkNum, sysTxs, userTxs, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to construct proposal: %s", err)
 	}
@@ -1870,23 +2099,13 @@ func (self *Server) makeProposal(blkNum uint64, forEmpty bool) error {
 	log.Infof("server %d make proposal for block %d", self.Index, blkNum)
 
 	// add proposal to self
-	self.msgPool.AddMsg(proposal)
-	self.processConsensusMsg(proposal)
+	h, _ := HashMsg(proposal)
+	self.msgPool.AddMsg(proposal, h)
+	self.processProposalMsg(proposal)
 	return self.broadcast(proposal)
 }
 
-func (self *Server) makeCommitment(proposal *blockProposalMsg, blkNum uint64) error {
-	forEmpty := false
-	if proposal == nil {
-		// find empty proposal
-		var err error
-		proposal, err = self.blockPool.findConsensusEmptyProposal(blkNum)
-		if err != nil {
-			return fmt.Errorf("failed to get consensused empty proposal: %s", err)
-		}
-		forEmpty = true
-	}
-
+func (self *Server) makeCommitment(proposal *blockProposalMsg, blkNum uint32, forEmpty bool) error {
 	if err := self.commitBlock(proposal, forEmpty); err != nil {
 		return fmt.Errorf("failed to commit block proposal (%d): %s", blkNum, err)
 	}
@@ -1896,17 +2115,10 @@ func (self *Server) makeCommitment(proposal *blockProposalMsg, blkNum uint64) er
 func (self *Server) makeSealed(proposal *blockProposalMsg, forEmpty bool) error {
 	blkNum := proposal.GetBlockNum()
 
-	// check if agreed on prev-blockhash
-	prevBlk, prevBlkHash := self.blockPool.getSealedBlock(blkNum - 1)
-	if prevBlk == nil {
-		// TODO: has no candidate proposals for prevBlock, should restart syncing
-		return fmt.Errorf("failed to get prevBlock of current round (%d)", blkNum)
-	}
-	prevBlkHash2 := proposal.Block.getPrevBlockHash()
-	if bytes.Compare(prevBlkHash.ToArray(), prevBlkHash2.ToArray()) != 0 {
+	if err := self.verifyPrevBlockHash(blkNum, proposal); err != nil {
 		// TODO: in-consistency with prev-blockhash, resync-required
 		self.restartSyncing()
-		return fmt.Errorf("inconsistent prev-block detected when commiting (%d)", blkNum)
+		return fmt.Errorf("verify prev block hash failed: %s", err)
 	}
 
 	log.Infof("server %d ready to seal block %d, for proposer %d, empty: %t",
@@ -1915,6 +2127,7 @@ func (self *Server) makeSealed(proposal *blockProposalMsg, forEmpty bool) error 
 	// seal the block
 	self.bftActionC <- &BftAction{
 		Type:     SealBlock,
+		BlockNum: blkNum,
 		Proposal: proposal,
 		forEmpty: forEmpty,
 	}
@@ -1922,26 +2135,46 @@ func (self *Server) makeSealed(proposal *blockProposalMsg, forEmpty bool) error 
 }
 
 func (self *Server) makeFastForward() error {
+	if len(self.bftActionC)+3 >= cap(self.bftActionC) {
+		// FIXME:
+		// some cases, such as burst of heartbeat msg, may do too much fast forward.
+		// make bftActionC full, and bftActionLoop halted.
+		// TODO: add throttling in state-mgmt
+		return fmt.Errorf("server %d make fastforward skipped, %d vs %d",
+			self.Index, len(self.bftActionC), cap(self.bftActionC))
+	}
+
 	self.bftActionC <- &BftAction{
-		Type: FastForward,
+		Type:     FastForward,
+		BlockNum: self.GetCurrentBlockNo(),
 	}
 	return nil
 }
 
 func (self *Server) reBroadcastCurrentRoundMsgs() error {
+	if len(self.bftActionC)+3 >= cap(self.bftActionC) {
+		// FIXME:
+		// some cases, such as burst of heartbeat msg, may do too much rebroadcast.
+		// make bftActionC full, and bftActionLoop halted.
+		// TODO: add throttling in state-mgmt
+		return fmt.Errorf("server %d make rebroadcasting skipped, %d vs %d",
+			self.Index, len(self.bftActionC), cap(self.bftActionC))
+	}
+
 	self.bftActionC <- &BftAction{
-		Type: ReBroadcast,
+		Type:     ReBroadcast,
+		BlockNum: self.GetCurrentBlockNo(),
 	}
 	return nil
 }
 
-func (self *Server) fetchProposal(blkNum uint64, proposer uint32) error {
-	msg, err := self.constructProposalFetchMsg(blkNum)
+func (self *Server) fetchProposal(blkNum uint32, proposer uint32) error {
+	msg, err := self.constructProposalFetchMsg(blkNum, proposer)
 	if err != nil {
 		return nil
 	}
 	self.msgSendC <- &SendMsgEvent{
-		ToPeer: proposer,
+		ToPeer: math.MaxUint32,
 		Msg:    msg,
 	}
 	return nil
@@ -1982,6 +2215,12 @@ func (self *Server) handleProposalTimeout(evt *TimerEvent) error {
 			return nil
 		}
 	}
+
+	if evt.evtType == EventRandomBackoff {
+		// proposal available, no proposing
+		return nil
+	}
+
 	// find highest rank proposal
 	proposal := self.getHighestRankProposal(evt.blockNum, proposals)
 	if proposal != nil {
@@ -1992,6 +2231,7 @@ func (self *Server) handleProposalTimeout(evt *TimerEvent) error {
 
 		self.bftActionC <- &BftAction{
 			Type:     EndorseBlock,
+			BlockNum: evt.blockNum,
 			Proposal: proposal,
 			forEmpty: false,
 		}
@@ -2002,7 +2242,7 @@ func (self *Server) handleProposalTimeout(evt *TimerEvent) error {
 	return nil
 }
 
-func (self *Server) initHandshake(peerIdx uint32, peerPubKey *keypair.PublicKey) error {
+func (self *Server) initHandshake(peerIdx uint32, peerPubKey keypair.PublicKey) error {
 	msg, err := self.constructHandshakeMsg()
 	if err != nil {
 		return fmt.Errorf("build handshake msg: %s", err)
@@ -2067,7 +2307,7 @@ func (self *Server) initHandshake(peerIdx uint32, peerPubKey *keypair.PublicKey)
 }
 
 // TODO: refactor this
-func (self *Server) catchConsensus(blkNum uint64) error {
+func (self *Server) catchConsensus(blkNum uint32) error {
 	if !self.isEndorser(blkNum, self.Index) && !self.isCommitter(blkNum, self.Index) {
 		return nil
 	}
@@ -2116,7 +2356,7 @@ func (self *Server) catchConsensus(blkNum uint64) error {
 		}
 	}
 	if proposal != nil && self.isProposer(blkNum, proposal.Block.getProposer()) {
-		self.processConsensusMsg(proposal)
+		self.processProposalMsg(proposal)
 	}
 
 	if self.isEndorser(blkNum, self.Index) && !endorseDone && proposal != nil {
@@ -2157,6 +2397,23 @@ func (self *Server) catchConsensus(blkNum uint64) error {
 	return nil
 }
 
+func (self *Server) verifyPrevBlockHash(blkNum uint32, proposal *blockProposalMsg) error {
+	prevBlk, prevBlkHash := self.blockPool.getSealedBlock(blkNum - 1)
+	if prevBlk == nil {
+		// TODO: has no candidate proposals for prevBlock, should restart syncing
+		return fmt.Errorf("failed to get prevBlock of current round (%d)", blkNum)
+	}
+	prevBlkHash2 := proposal.Block.getPrevBlockHash()
+	if bytes.Compare(prevBlkHash.ToArray(), prevBlkHash2.ToArray()) != 0 {
+		// continue waiting for more proposals
+		// FIXME
+		return fmt.Errorf("inconsistent prev-block hash %s vs %s (blk %d)",
+			hex.EncodeToString(prevBlkHash[:4]), hex.EncodeToString(prevBlkHash2[:4]), blkNum)
+	}
+
+	return nil
+}
+
 func (self *Server) hasBlockConsensused() bool {
 	blkNum := self.GetCurrentBlockNo()
 
@@ -2179,4 +2436,17 @@ func (self *Server) hasBlockConsensused() bool {
 	}
 
 	return emptyCnt > C
+}
+
+func (self *Server) restartSyncing() {
+
+	// send sync request to self.sync, go syncing-state immediately
+	// stop all bft timers
+
+	self.stateMgr.checkStartSyncing(self.GetCommittedBlockNo(), true)
+
+}
+
+func (self *Server) checkSyncing() {
+	self.stateMgr.checkStartSyncing(self.GetCommittedBlockNo(), false)
 }

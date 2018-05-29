@@ -21,33 +21,38 @@ package types
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 
+	"github.com/ontio/ontology/errors"
 	comm "github.com/ontio/ontology/p2pserver/common"
 )
 
 type Addr struct {
 	Hdr       MsgHdr
-	NodeCnt   uint64
 	NodeAddrs []comm.PeerAddr
 }
 
 //Check whether header is correct
 func (this Addr) Verify(buf []byte) error {
 	err := this.Hdr.Verify(buf)
-	return err
+	if err != nil {
+		return errors.NewDetailErr(err, errors.ErrNetVerifyFail, fmt.Sprintf("verify error. buf:%v", buf))
+	}
+	return nil
 }
 
 //Serialize message payload
 func (this Addr) Serialization() ([]byte, error) {
 	p := new(bytes.Buffer)
-	err := binary.Write(p, binary.LittleEndian, this.NodeCnt)
+	num := uint64(len(this.NodeAddrs))
+	err := binary.Write(p, binary.LittleEndian, num)
 	if err != nil {
-		return nil, err
+		return nil, errors.NewDetailErr(err, errors.ErrNetPackFail, fmt.Sprintf("write error. num:%v", num))
 	}
 
 	err = binary.Write(p, binary.LittleEndian, this.NodeAddrs)
 	if err != nil {
-		return nil, err
+		return nil, errors.NewDetailErr(err, errors.ErrNetPackFail, fmt.Sprintf("write error. NodeAddrs:%v", this.NodeAddrs))
 	}
 
 	checkSumBuf := CheckSum(p.Bytes())
@@ -55,9 +60,8 @@ func (this Addr) Serialization() ([]byte, error) {
 
 	var buf bytes.Buffer
 	err = binary.Write(&buf, binary.LittleEndian, this.Hdr)
-
 	if err != nil {
-		return nil, err
+		return nil, errors.NewDetailErr(err, errors.ErrNetPackFail, fmt.Sprintf("write error. Hdr:%v", this.Hdr))
 	}
 	data := append(buf.Bytes(), p.Bytes()...)
 	return data, nil
@@ -67,14 +71,20 @@ func (this Addr) Serialization() ([]byte, error) {
 func (this *Addr) Deserialization(p []byte) error {
 	buf := bytes.NewBuffer(p)
 	err := binary.Read(buf, binary.LittleEndian, &(this.Hdr))
-	err = binary.Read(buf, binary.LittleEndian, &(this.NodeCnt))
-	this.NodeAddrs = make([]comm.PeerAddr, this.NodeCnt)
-	for i := 0; i < int(this.NodeCnt); i++ {
+	if err != nil {
+		return errors.NewDetailErr(err, errors.ErrNetUnPackFail, fmt.Sprintf("read Hdr error. buf:%v", buf))
+	}
+	var NodeCnt uint64
+	err = binary.Read(buf, binary.LittleEndian, &NodeCnt)
+	if err != nil {
+		return errors.NewDetailErr(err, errors.ErrNetUnPackFail, fmt.Sprintf("read NodeCnt error. buf:%v", buf))
+	}
+	this.NodeAddrs = make([]comm.PeerAddr, NodeCnt)
+	for i := 0; i < int(NodeCnt); i++ {
 		err := binary.Read(buf, binary.LittleEndian, &(this.NodeAddrs[i]))
 		if err != nil {
-			goto err
+			return errors.NewDetailErr(err, errors.ErrNetUnPackFail, fmt.Sprintf("read NodeAddrs error. buf:%v", buf))
 		}
 	}
-err:
-	return err
+	return nil
 }

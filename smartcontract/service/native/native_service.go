@@ -27,12 +27,12 @@ import (
 	"github.com/ontio/ontology/errors"
 	"github.com/ontio/ontology/smartcontract/context"
 	"github.com/ontio/ontology/smartcontract/event"
-	"github.com/ontio/ontology/smartcontract/storage"
 	sstates "github.com/ontio/ontology/smartcontract/states"
+	"github.com/ontio/ontology/smartcontract/storage"
 )
 
 type (
-	Handler         func(native *NativeService) error
+	Handler         func(native *NativeService) ([]byte, error)
 	RegisterService func(native *NativeService)
 )
 
@@ -71,15 +71,16 @@ func (this *NativeService) Invoke() (interface{}, error) {
 	services(this)
 	service, ok := this.ServiceMap[contract.Method]
 	if !ok {
-		return false, fmt.Errorf("Native contract %x doesn't support this function %s.", contract.Address, contract.Method)
+		return false, fmt.Errorf("Native contract %x doesn't support this function %s.",
+			contract.Address, contract.Method)
 	}
 	this.Input = contract.Args
 	this.ContextRef.PushContext(&context.Context{ContractAddress: contract.Address})
-	if err := service(this); err != nil {
-		return false, errors.NewDetailErr(err, errors.ErrNoCode, "[Invoke] Native serivce function execute error!")
+	result, err := service(this)
+	if err != nil {
+		return result, errors.NewDetailErr(err, errors.ErrNoCode, "[Invoke] Native serivce function execute error!")
 	}
 	this.ContextRef.PopContext()
 	this.ContextRef.PushNotifications(this.Notifications)
-	return true, nil
+	return result, nil
 }
-

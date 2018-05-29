@@ -80,11 +80,9 @@ func checkTransactionSignatures(tx *types.Transaction) error {
 		}
 	}
 
-	// check all payers in address
-	for _, fee := range tx.Fee {
-		if address[fee.Payer] == false {
-			return errors.New("signature missing for payer: " + common.ToHexString(fee.Payer[:]))
-		}
+	// check payer in address
+	if address[tx.Payer] == false {
+		return errors.New("signature missing for payer: " + common.ToHexString(tx.Payer[:]))
 	}
 
 	return nil
@@ -96,8 +94,6 @@ func checkTransactionPayload(tx *types.Transaction) error {
 	case *payload.DeployCode:
 		return nil
 	case *payload.InvokeCode:
-		return nil
-	case *payload.Bookkeeping:
 		return nil
 	default:
 		return errors.New(fmt.Sprint("[txValidator], unimplemented transaction payload type.", pld))

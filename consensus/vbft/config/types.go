@@ -55,25 +55,25 @@ func StringID(in string) (NodeID, error) {
 	if err != nil {
 		return id, err
 	} else if len(b) > len(id) {
-		return id, fmt.Errorf("wrong length, want %d hex chars", len(b)*2)
+		return id, fmt.Errorf("wrong length, want %d hex chars, get %d hex chars", len(b)*2, len(id)*2)
 	}
 	copy(id[:], b)
 	return id, nil
 }
 
 // PubkeyID returns a marshaled representation of the given public key.
-func PubkeyID(pub *keypair.PublicKey) (NodeID, error) {
-	keyData := keypair.SerializePublicKey(*pub)
+func PubkeyID(pub keypair.PublicKey) (NodeID, error) {
+	keyData := keypair.SerializePublicKey(pub)
 	var id NodeID
 	copy(id[:], keyData)
 	return id, nil
 }
 
-func (id NodeID) Pubkey() (*keypair.PublicKey, error) {
+func (id NodeID) Pubkey() (keypair.PublicKey, error) {
 	pk, err := keypair.DeserializePublicKey(id[:])
 	if err != nil {
 		return nil, fmt.Errorf("deserialize failed: %s", err)
 	}
 
-	return &pk, err
+	return pk, err
 }

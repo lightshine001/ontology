@@ -61,8 +61,6 @@ func (this *P2PActor) Receive(ctx actor.Context) {
 		log.Info("p2p actor started")
 	case *actor.Restart:
 		log.Info("p2p actor restart")
-	case *StartServerReq:
-		this.handleStartServerReq(ctx, msg)
 	case *StopServerReq:
 		this.handleStopServerReq(ctx, msg)
 	case *GetPortReq:
@@ -100,30 +98,16 @@ func (this *P2PActor) Receive(ctx actor.Context) {
 	default:
 		err := this.server.Xmit(ctx.Message())
 		if nil != err {
-			log.Error("Error Xmit message ", err.Error(), reflect.TypeOf(ctx.Message()))
+			log.Error("error xmit message ", err.Error(), reflect.TypeOf(ctx.Message()))
 		}
-	}
-}
-
-//start handler
-func (this *P2PActor) handleStartServerReq(ctx actor.Context, req *StartServerReq) {
-	startSync := ctx.Message().(*StartServerReq).StartSync
-	err := this.server.Start(startSync)
-	if ctx.Sender() != nil {
-		resp := &StartServerRsp{
-			Error: err,
-		}
-		ctx.Sender().Request(resp, ctx.Self())
 	}
 }
 
 //stop handler
 func (this *P2PActor) handleStopServerReq(ctx actor.Context, req *StopServerReq) {
-	err := this.server.Stop()
+	this.server.Stop()
 	if ctx.Sender() != nil {
-		resp := &StopServerRsp{
-			Error: err,
-		}
+		resp := &StopServerRsp{}
 		ctx.Sender().Request(resp, ctx.Self())
 	}
 }
@@ -221,11 +205,10 @@ func (this *P2PActor) handleGetTimeReq(ctx actor.Context, req *GetTimeReq) {
 
 //nbr peer`s address handler
 func (this *P2PActor) handleGetNeighborAddrsReq(ctx actor.Context, req *GetNeighborAddrsReq) {
-	addrs, cnt := this.server.GetNeighborAddrs()
+	addrs := this.server.GetNeighborAddrs()
 	if ctx.Sender() != nil {
 		resp := &GetNeighborAddrsRsp{
 			Addrs: addrs,
-			Count: cnt,
 		}
 		ctx.Sender().Request(resp, ctx.Self())
 	}
@@ -256,7 +239,7 @@ func (this *P2PActor) handleGetNodeTypeReq(ctx actor.Context, req *GetNodeTypeRe
 //handle vbft msg request
 func (this *P2PActor) handleTransmitConsensusMsgReq(ctx actor.Context, req *TransmitConsensusMsgReq) {
 	for _, peer := range this.server.GetNetWork().GetNeighbors() {
-		if keypair.ComparePublicKey(*req.Target, peer.GetPubKey()) {
+		if keypair.ComparePublicKey(req.Target, peer.GetPubKey()) {
 			this.server.Send(peer, req.Msg, true)
 		}
 	}

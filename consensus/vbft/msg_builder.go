@@ -23,9 +23,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ontio/ontology-crypto/keypair"
 	"github.com/ontio/ontology/common"
-	vconfig "github.com/ontio/ontology/consensus/vbft/config"
+	"github.com/ontio/ontology/common/log"
+	"github.com/ontio/ontology/consensus/vbft/config"
 	"github.com/ontio/ontology/core/ledger"
+	"github.com/ontio/ontology/core/signature"
 	"github.com/ontio/ontology/core/types"
 )
 
@@ -139,11 +142,6 @@ func (self *Server) constructHandshakeMsg() (*peerHandshakeMsg, error) {
 		ChainConfig:          self.config,
 	}
 
-	sig, err := SignMsg(self.account, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign handshake msg: %s", err)
-	}
-	msg.Sig = sig
 	return msg, nil
 }
 
@@ -154,91 +152,135 @@ func (self *Server) constructHeartbeatMsg() (*peerHeartbeatMsg, error) {
 	if block == nil {
 		return nil, fmt.Errorf("failed to get sealed block, current block: %d", self.GetCurrentBlockNo())
 	}
+
+	bookkeepers := make([][]byte, 0)
+	endorsePks := block.Block.Header.Bookkeepers
+	sigData := block.Block.Header.SigData
+	if len(endorsePks) == len(sigData) {
+		for i := 0; i < len(endorsePks); i++ {
+			bookkeepers = append(bookkeepers, keypair.SerializePublicKey(endorsePks[i]))
+		}
+	} else {
+		log.Errorf("Invalid signature counts in block %d: %d vs %d", blkNum, len(endorsePks), len(sigData))
+		sigData = make([][]byte, 0)
+	}
+
 	msg := &peerHeartbeatMsg{
 		CommittedBlockNumber: blkNum,
 		CommittedBlockHash:   blockhash,
 		CommittedBlockLeader: block.getProposer(),
+		Endorsers:            bookkeepers,
+		EndorsersSig:         sigData,
 		ChainConfigView:      self.config.View,
 	}
 
-	sig, err := SignMsg(self.account, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign heartbeat msg: %s", err)
-	}
-	msg.Sig = sig
 	return msg, nil
 }
 
-func (self *Server) constructProposalMsg(blkNum uint64, txs []*types.Transaction) (*blockProposalMsg, error) {
+func (self *Server) constructBlock(blkNum uint32, prevBlkHash common.Uint256, txs []*types.Transaction, consensusPayload []byte, blocktimestamp uint32) (*types.Block, error) {
+	txHash := []common.Uint256{}
+	for _, t := range txs {
+		txHash = append(txHash, t.Hash())
+	}
+	txRoot := common.ComputeMerkleRoot(txHash)
+	blockRoot := ledger.DefLedger.GetBlockRootWithNewTxRoot(txRoot)
+
+	blkHeader := &types.Header{
+		PrevBlockHash:    prevBlkHash,
+		TransactionsRoot: txRoot,
+		BlockRoot:        blockRoot,
+		Timestamp:        blocktimestamp,
+		Height:           uint32(blkNum),
+		ConsensusData:    common.GetNonce(),
+		ConsensusPayload: consensusPayload,
+	}
+	blk := &types.Block{
+		Header:       blkHeader,
+		Transactions: txs,
+	}
+	blkHash := blk.Hash()
+	sig, err := signature.Sign(self.account, blkHash[:])
+	if err != nil {
+		return nil, fmt.Errorf("sign block failed, block hash：%x, error: %s", blkHash, err)
+	}
+	blkHeader.Bookkeepers = []keypair.PublicKey{self.account.PublicKey}
+	blkHeader.SigData = [][]byte{sig}
+
+	return blk, nil
+}
+
+func (self *Server) constructProposalMsg(blkNum uint32, sysTxs, userTxs []*types.Transaction, chainconfig *vconfig.ChainConfig) (*blockProposalMsg, error) {
 
 	prevBlk, prevBlkHash := self.blockPool.getSealedBlock(blkNum - 1)
 	if prevBlk == nil {
 		return nil, fmt.Errorf("failed to get prevBlock (%d)", blkNum)
 	}
-
-	txHash := []common.Uint256{}
-	for _, t := range txs {
-		txHash = append(txHash, t.Hash())
+	blocktimestamp := uint32(time.Now().Unix())
+	if prevBlk.Block.Header.Timestamp >= blocktimestamp {
+		blocktimestamp = prevBlk.Block.Header.Timestamp + 1
 	}
-	txRoot, err := common.ComputeMerkleRoot(txHash)
-	if err != nil {
-		return nil, fmt.Errorf("compute hash root: %s", err)
-	}
-	blockRoot := ledger.DefLedger.GetBlockRootWithNewTxRoot(txRoot)
 
 	lastConfigBlkNum := prevBlk.Info.LastConfigBlockNum
 	if prevBlk.Info.NewChainConfig != nil {
 		lastConfigBlkNum = prevBlk.getBlockNum()
 	}
+	if chainconfig != nil {
+		lastConfigBlkNum = blkNum
+	}
 	vbftBlkInfo := &vconfig.VbftBlockInfo{
 		Proposer:           self.Index,
 		LastConfigBlockNum: lastConfigBlkNum,
-		NewChainConfig:     nil,
+		NewChainConfig:     chainconfig,
 	}
 	consensusPayload, err := json.Marshal(vbftBlkInfo)
 	if err != nil {
 		return nil, err
 	}
-	blkHeader := &types.Header{
-		PrevBlockHash:    prevBlkHash,
-		TransactionsRoot: txRoot,
-		BlockRoot:        blockRoot,
-		Timestamp:        uint32(time.Now().Unix()),
-		Height:           uint32(blkNum),
-		ConsensusData:    uint64(self.Index),
-		ConsensusPayload: consensusPayload,
-		SigData:          [][]byte{{}, {}},
+
+	emptyBlk, err := self.constructBlock(blkNum, prevBlkHash, sysTxs, consensusPayload, blocktimestamp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to construct empty block: %s", err)
 	}
-	blk := &Block{
-		Block: &types.Block{
-			Header: blkHeader,
-		},
-		Info: vbftBlkInfo,
+	blk, err := self.constructBlock(blkNum, prevBlkHash, append(sysTxs, userTxs...), consensusPayload, blocktimestamp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to constuct blk: %s", err)
 	}
-	blk.Block.Hash() // update block header hash
+
 	msg := &blockProposalMsg{
-		Block: blk,
+		Block: &Block{
+			Block:      blk,
+			EmptyBlock: emptyBlk,
+			Info:       vbftBlkInfo,
+		},
 	}
 
-	emptySig, err := SignMsg(self.account, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign empty proposal: %s", err)
-	}
-
-	blk.Block.Transactions = txs
-	sig, err := SignMsg(self.account, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign proposal: %s", err)
-	}
-
-	msg.Block.Block.Header.SigData[0] = sig
-	msg.Block.Block.Header.SigData[1] = emptySig
 	return msg, nil
 }
 
-func (self *Server) constructEndorseMsg(proposal *blockProposalMsg, blkHash common.Uint256, forEmpty bool) (*blockEndorseMsg, error) {
+func (self *Server) constructEndorseMsg(proposal *blockProposalMsg, forEmpty bool) (*blockEndorseMsg, error) {
 
 	// TODO, support faultyMsg reporting
+
+	var proposerSig, endorserSig []byte
+	var blkHash common.Uint256
+	var err error
+	if !forEmpty {
+		proposerSig = proposal.Block.Block.Header.SigData[0]
+		blkHash = proposal.Block.Block.Hash()
+
+	} else {
+		if proposal.Block.EmptyBlock == nil {
+			return nil, fmt.Errorf("blk %d proposal from %d has no empty proposal",
+				proposal.GetBlockNum(), proposal.Block.getProposer())
+		}
+
+		proposerSig = proposal.Block.EmptyBlock.Header.SigData[0]
+		blkHash = proposal.Block.EmptyBlock.Hash()
+	}
+	endorserSig, err = signature.Sign(self.account, blkHash[:])
+	if err != nil {
+		return nil, fmt.Errorf("endorser failed to sign block. hash:%x, err: %s", blkHash, err)
+	}
 
 	msg := &blockEndorseMsg{
 		Endorser:          self.Index,
@@ -246,18 +288,42 @@ func (self *Server) constructEndorseMsg(proposal *blockProposalMsg, blkHash comm
 		BlockNum:          proposal.Block.getBlockNum(),
 		EndorsedBlockHash: blkHash,
 		EndorseForEmpty:   forEmpty,
+		ProposerSig:       proposerSig,
+		EndorserSig:       endorserSig,
 	}
-	sig, err := SignMsg(self.account, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign endorse msg: %s", err)
-	}
-	msg.Sig = sig
+
 	return msg, nil
 }
 
-func (self *Server) constructCommitMsg(proposal *blockProposalMsg, blkHash common.Uint256, forEmpty bool) (*blockCommitMsg, error) {
+func (self *Server) constructCommitMsg(proposal *blockProposalMsg, endorses []*blockEndorseMsg, forEmpty bool) (*blockCommitMsg, error) {
 
 	// TODO, support faultyMsg reporting
+
+	var proposerSig, committerSig []byte
+	var blkHash common.Uint256
+	var err error
+
+	if !forEmpty {
+		proposerSig = proposal.Block.Block.Header.SigData[0]
+		blkHash = proposal.Block.Block.Hash()
+	} else {
+		if proposal.Block.EmptyBlock == nil {
+			return nil, fmt.Errorf("blk %d proposal from %d has no empty proposal",
+				proposal.GetBlockNum(), proposal.Block.getProposer())
+		}
+
+		proposerSig = proposal.Block.EmptyBlock.Header.SigData[0]
+		blkHash = proposal.Block.EmptyBlock.Hash()
+	}
+	committerSig, err = signature.Sign(self.account, blkHash[:])
+	if err != nil {
+		return nil, fmt.Errorf("endorser failed to sign block. hash:%x, caused by: %s", blkHash, err)
+	}
+
+	endorsersSig := make(map[uint32][]byte)
+	for _, e := range endorses {
+		endorsersSig[e.Endorser] = e.EndorserSig
+	}
 
 	msg := &blockCommitMsg{
 		Committer:       self.Index,
@@ -265,53 +331,35 @@ func (self *Server) constructCommitMsg(proposal *blockProposalMsg, blkHash commo
 		BlockNum:        proposal.Block.getBlockNum(),
 		CommitBlockHash: blkHash,
 		CommitForEmpty:  forEmpty,
+		ProposerSig:     proposerSig,
+		EndorsersSig:    endorsersSig,
+		CommitterSig:    committerSig,
 	}
 
-	sig, err := SignMsg(self.account, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign commit msg: %s", err)
-	}
-	msg.Sig = sig
 	return msg, nil
 }
 
-func (self *Server) constructBlockFetchMsg(blkNum uint64) (*blockFetchMsg, error) {
+func (self *Server) constructBlockFetchMsg(blkNum uint32) (*blockFetchMsg, error) {
 	msg := &blockFetchMsg{
 		BlockNum: blkNum,
 	}
-	sig, err := SignMsg(self.account, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign blockfetch msg: %s", err)
-	}
-
-	msg.Sig = sig
 	return msg, nil
 }
 
-func (self *Server) constructBlockFetchRespMsg(blkNum uint64, blk *Block, blkHash common.Uint256) (*BlockFetchRespMsg, error) {
+func (self *Server) constructBlockFetchRespMsg(blkNum uint32, blk *Block, blkHash common.Uint256) (*BlockFetchRespMsg, error) {
 	msg := &BlockFetchRespMsg{
 		BlockNumber: blkNum,
 		BlockHash:   blkHash,
 		BlockData:   blk,
 	}
-	sig, err := SignMsg(self.account, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign blockfetch-rsp msg: %s", err)
-	}
-	msg.Sig = sig
 	return msg, nil
 }
 
-func (self *Server) constructBlockInfoFetchMsg(startBlkNum uint64) (*BlockInfoFetchMsg, error) {
+func (self *Server) constructBlockInfoFetchMsg(startBlkNum uint32) (*BlockInfoFetchMsg, error) {
 
 	msg := &BlockInfoFetchMsg{
 		StartBlockNum: startBlkNum,
 	}
-	sig, err := SignMsg(self.account, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign blockinfo fetch req msg: %s", err)
-	}
-	msg.Sig = sig
 	return msg, nil
 }
 
@@ -319,23 +367,13 @@ func (self *Server) constructBlockInfoFetchRespMsg(blockInfos []*BlockInfo_) (*B
 	msg := &BlockInfoFetchRespMsg{
 		Blocks: blockInfos,
 	}
-	sig, err := SignMsg(self.account, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign blockinfo fetch rsp msg: %s", err)
-	}
-	msg.Sig = sig
 	return msg, nil
 }
 
-func (self *Server) constructProposalFetchMsg(blkNum uint64) (*proposalFetchMsg, error) {
+func (self *Server) constructProposalFetchMsg(blkNum uint32, proposer uint32) (*proposalFetchMsg, error) {
 	msg := &proposalFetchMsg{
-		BlockNum: blkNum,
+		ProposerID: proposer,
+		BlockNum:   blkNum,
 	}
-	sig, err := SignMsg(self.account, msg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign proposalFetch msg: %s", err)
-	}
-
-	msg.Sig = sig
 	return msg, nil
 }

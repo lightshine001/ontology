@@ -54,8 +54,8 @@ func NewDHT(node types.NodeID, seeds []*types.Node) *DHT {
 	dht := &DHT{
 		nodeID:       node,
 		addr:         "127.0.0.1",
-		udpPort:      config.Parameters.DHTUDPPort,
-		tcpPort:      config.Parameters.NodePort,
+		udpPort:      uint16(config.DefConfig.P2PNode.DHTUDPPort),
+		tcpPort:      uint16(config.DefConfig.P2PNode.NodePort),
 		routingTable: &routingTable{},
 		seeds:        make([]*types.Node, 0, len(seeds)),
 	}
@@ -270,6 +270,7 @@ func (this *DHT) Ping(addr *net.UDPAddr) error {
 	copy(pingPayload.DestAddr[:], ip[:16])
 
 	copy(pingPayload.FromID[:], this.nodeID[:])
+
 	pingPacket, err := msgpack.NewDHTPing(pingPayload)
 	if err != nil {
 		log.Error("failed to new dht ping packet", err)

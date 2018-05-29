@@ -42,6 +42,7 @@ const (
 	DEFAULT_LOG_LEVEL        = 1
 	DEFAULT_MAX_LOG_SIZE     = 100 //MByte
 	DEFAULT_NODE_PORT        = uint(20338)
+	DEFAULT_DHT_UDP_PORT     = uint(20331)
 	DEFAULT_CONSENSUS_PORT   = uint(20339)
 	DEFAULT_RPC_PORT         = uint(20336)
 	DEFAULT_RPC_LOCAL_PORT   = uint(20337)
@@ -64,6 +65,7 @@ type DHTNode struct {
 	UDPPort uint16 `json:"UDPPort"`
 	TCPPort uint16 `json:"TCPPort"`
 }
+
 var PolarisConfig = &GenesisConfig{
 	SeedList: []string{
 		"polaris1.ont.io:20338",
@@ -81,69 +83,6 @@ var PolarisConfig = &GenesisConfig{
 			"120202a76a434b18379e3bda651b7c04e972dadc4760d1156b5c86b3c4d27da48c91a1"},
 	},
 	SOLO: &SOLOConfig{},
-}
-
-type DHTNode struct {
-	PubKey  string `json:"PubKey"`
-	IP      string `json:"IP"`
-	UDPPort uint16 `json:"UDPPort"`
-	TCPPort uint16 `json:"TCPPort"`
-}
-
-type Configuration struct {
-	Magic               int64            `json:"Magic"`
-	Version             int              `json:"Version"`
-	SeedList            []string         `json:"SeedList"`
-	Bookkeepers         []string         `json:"Bookkeepers"` // The default book keepers' publickey
-	DHTSeeds            []DHTNode        `json:"DHTSeeds"`
-	HttpRestPort        int              `json:"HttpRestPort"`
-	HttpCertPath        string           `json:"HttpCertPath"`
-	HttpKeyPath         string           `json:"HttpKeyPath"`
-	HttpInfoPort        uint16           `json:"HttpInfoPort"`
-	HttpWsPort          int              `json:"HttpWsPort"`
-	HttpJsonPort        int              `json:"HttpJsonPort"`
-	HttpLocalPort       int              `json:"HttpLocalPort"`
-	NodePort            uint16           `json:"NodePort"`
-	NodeConsensusPort   uint16           `json:"NodeConsensusPort"`
-	DualPortSurpport    bool             `json:"DualPortSurpport"`
-	DHTUDPPort          uint16           `json:"DHTUDPPort"`
-	NodeType            string           `json:"NodeType"`
-	PrintLevel          int              `json:"PrintLevel"`
-	IsTLS               bool             `json:"IsTLS"`
-	CertPath            string           `json:"CertPath"`
-	KeyPath             string           `json:"KeyPath"`
-	CAPath              string           `json:"CAPath"`
-	GenBlockTime        uint             `json:"GenBlockTime"`
-	MultiCoreNum        uint             `json:"MultiCoreNum"`
-	MaxLogSize          int64            `json:"MaxLogSize"`
-	MaxTxInBlock        int              `json:"MaxTransactionInBlock"`
-	MaxHdrSyncReqs      int              `json:"MaxConcurrentSyncHeaderReqs"`
-	ConsensusType       string           `json:"ConsensusType"`
-	ConsensusConfigPath string           `json:"ConsensusConfigPath"`
-	SystemFee           map[string]int64 `json:"SystemFee"`
-}
-
-type configFile struct {
-	ConfigFile Configuration `json:"Configuration"`
-}
-
-func newDefaultConfig() *Configuration {
-	return &Configuration{
-		Magic:             12345,
-		Version:           0,
-		HttpRestPort:      20334,
-		HttpWsPort:        20335,
-		HttpJsonPort:      20336,
-		HttpLocalPort:     20337,
-		NodePort:          20338,
-		NodeConsensusPort: 20339,
-		PrintLevel:        1,
-		GenBlockTime:      6,
-		MultiCoreNum:      4,
-		MaxTxInBlock:      5000,
-		ConsensusType:     "solo",
-		SystemFee:         make(map[string]int64),
-	}
 }
 
 var DefConfig = NewOntologyConfig()
@@ -218,6 +157,8 @@ type P2PNodeConfig struct {
 	CAPath            string
 	HttpInfoPort      uint
 	MaxHdrSyncReqs    uint
+	DHTUDPPort        uint
+	DHTSeeds          []DHTNode
 }
 
 type RpcConfig struct {
@@ -278,6 +219,7 @@ func NewOntologyConfig() *OntologyConfig {
 			CAPath:            "",
 			HttpInfoPort:      DEFAULT_HTTP_INFO_PORT,
 			MaxHdrSyncReqs:    DEFAULT_MAX_SYNC_HEADER,
+			DHTUDPPort:        DEFAULT_DHT_UDP_PORT,
 		},
 		Rpc: &RpcConfig{
 			EnableHttpJsonRpc: true,

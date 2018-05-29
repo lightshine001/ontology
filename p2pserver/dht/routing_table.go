@@ -19,7 +19,7 @@
 package dht
 
 import (
-	//"crypto/sha256"
+
 	"sync"
 
 	//"github.com/ontio/ontology/common"
@@ -43,6 +43,7 @@ func (this *routingTable) init(id types.NodeID) {
 			entries: make([]*types.Node, 0, types.BUCKET_SIZE),
 		}
 	}
+
 	this.id = id
 }
 

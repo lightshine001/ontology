@@ -24,13 +24,13 @@ import (
 	"net"
 	"sync"
 
+	"github.com/ontio/ontology/common/config"
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/p2pserver/common"
 	"github.com/ontio/ontology/p2pserver/dht/types"
 	"github.com/ontio/ontology/p2pserver/message/msg_pack"
 	mt "github.com/ontio/ontology/p2pserver/message/types"
 	"strconv"
-	"github.com/ontio/ontology/common/config"
 )
 
 type DHT struct {
@@ -151,44 +151,61 @@ func (this *DHT) lookup(targetID types.NodeID) []*types.Node {
 			break
 		}
 		//log.Info("Waiting for response")
-		responseCh := this.findNodeQueue.GetResultCh()
-		select {
-		case entries, ok := <-responseCh:
-			if ok {
-				//log.Infof("get entries %d %v", len(entries), entries)
-				for _, n := range entries {
-					//log.Info("receive new node", n.UDPPort)
-					// Todo:
-					if knownNode[n.ID] == true || n.ID == this.nodeID {
-						continue
-					}
-					knownNode[n.ID] = true
-					this.AddNode(n)
 
-					if len(closestNodes) < types.BUCKET_SIZE {
-						closestNodes = append(closestNodes, n)
-					} else {
-						index := len(closestNodes)
-						for i, entry := range closestNodes {
-							for j := range targetID {
-								da := entry.ID[j] ^ targetID[j]
-								db := n.ID[j] ^ targetID[j]
-								if da > db {
-									index = i
-									break
-								}
-							}
-						}
+		this.handleLookupNode(knownNode, closestNodes, targetID)
 
-						if index < len(closestNodes) {
-							closestNodes[index] = n
-						}
-					}
+		pendingQueries--
+	}
+	return closestNodes
+}
+
+func (this *DHT) handleLookupNode(knownNode map[types.NodeID]bool, closestNodes []*types.Node, targetID types.NodeID) {
+	responseCh := this.findNodeQueue.GetResultCh()
+	select {
+	case entries, ok := <-responseCh:
+		if ok {
+			//log.Infof("get entries %d %v", len(entries), entries)
+			for _, n := range entries {
+				//log.Info("receive new node", n.UDPPort)
+				// Todo:
+				if knownNode[n.ID] == true || n.ID == this.nodeID {
+					continue
+				}
+				knownNode[n.ID] = true
+				// ping this node
+				this.pingNodeQueue.AddNode(n, nil)
+				addr, err := getNodeUDPAddr(n)
+				if err != nil {
+					continue
+				}
+				this.Ping(addr)
+
+				closestNodes = addClosetNode(closestNodes, n, targetID)
+			}
+		}
+	}
+
+}
+
+func addClosetNode(closestNodes []*types.Node, n *types.Node, targetID types.NodeID) []*types.Node {
+	if len(closestNodes) < types.BUCKET_SIZE {
+		closestNodes = append(closestNodes, n)
+	} else {
+		index := len(closestNodes)
+		for i, entry := range closestNodes {
+			for j := range targetID {
+				da := entry.ID[j] ^ targetID[j]
+				db := n.ID[j] ^ targetID[j]
+				if da > db {
+					index = i
+					break
 				}
 			}
 		}
 
-		pendingQueries--
+		if index < len(closestNodes) {
+			closestNodes[index] = n
+		}
 	}
 	return closestNodes
 }

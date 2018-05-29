@@ -19,12 +19,12 @@ func main() {
 
 	log.Info("0. Open the account")
 	client, err := account.Open("./wallet.dat")
-	if client == nil || err != nil{
+	if client == nil || err != nil {
 		log.Fatal("Can't get local account.")
 		return
 	}
 	acct, err = client.GetDefaultAccount([]byte("passwordtest"))
-	if acct == nil || err != nil{
+	if acct == nil || err != nil {
 		log.Fatal("can not get default account")
 		return
 	}

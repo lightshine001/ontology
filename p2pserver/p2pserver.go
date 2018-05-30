@@ -20,6 +20,8 @@ package p2pserver
 
 import (
 	"encoding/hex"
+	"encoding/json"
+
 	"errors"
 	"io/ioutil"
 	"math/rand"
@@ -33,6 +35,7 @@ import (
 
 	"github.com/ontio/ontology-crypto/keypair"
 	evtActor "github.com/ontio/ontology-eventbus/actor"
+	"github.com/ontio/ontology/account"
 	comm "github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/config"
 	"github.com/ontio/ontology/common/log"
@@ -73,23 +76,23 @@ type ReconnectAddrs struct {
 }
 
 //NewServer return a new p2pserver according to the pubkey
-func NewServer() *P2PServer {
-	n := netserver.NewNetServer()
+func NewServer(acc *account.Account) *P2PServer {
+	n := netserver.NewNetServer(acc.PubKey())
 
 	p := &P2PServer{
 		network: n,
 		ledger:  ledger.DefLedger,
 	}
 
-	nodeID, _ := dt.PubkeyID(acc.PublicKey)
+	nodeID, _ := dt.PubkeyID(acc.PubKey())
 
-	seeds := make([]*dt.Node, 0, len(config.Parameters.DHTSeeds))
-	for i := 0; i < len(config.Parameters.DHTSeeds); i++ {
-		node := config.Parameters.DHTSeeds[i]
+	seeds := make([]*dt.Node, 0, len(config.DefConfig.Genesis.DHT.Seeds))
+	for i := 0; i < len(config.DefConfig.Genesis.DHT.Seeds); i++ {
+		node := config.DefConfig.Genesis.DHT.Seeds[i]
 		pubKey, err := hex.DecodeString(node.PubKey)
 		k, err := keypair.DeserializePublicKey(pubKey)
 		if err != nil {
-			return
+			return nil
 		}
 		seed := &dt.Node{
 			IP:      node.IP,

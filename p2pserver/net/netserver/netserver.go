@@ -39,7 +39,6 @@ import (
 	"github.com/ontio/ontology/p2pserver/message/types"
 	"github.com/ontio/ontology/p2pserver/net/protocol"
 	"github.com/ontio/ontology/p2pserver/peer"
-	"strconv"
 )
 
 //NewNetServer return the net object in p2p

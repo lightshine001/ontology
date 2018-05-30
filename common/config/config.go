@@ -84,6 +84,7 @@ type GenesisConfig struct {
 	VBFT          *VBFTConfig
 	DBFT          *DBFTConfig
 	SOLO          *SOLOConfig
+	DHT           *DHTConfig
 }
 
 func NewGenesisConfig() *GenesisConfig {
@@ -93,6 +94,7 @@ func NewGenesisConfig() *GenesisConfig {
 		VBFT:          &VBFTConfig{},
 		DBFT:          &DBFTConfig{},
 		SOLO:          &SOLOConfig{},
+		DHT:           &DHTConfig{},
 	}
 }
 
@@ -123,6 +125,18 @@ type DBFTConfig struct {
 type SOLOConfig struct {
 	GenBlockTime uint
 	Bookkeepers  []string
+}
+
+type DHTConfig struct {
+	UDPPort uint      `json:"DHTUDPPort"`
+	Seeds   []DHTNode `json:"Seeds"`
+}
+
+type DHTNode struct {
+	PubKey  string `json:"PubKey"`
+	IP      string `json:"IP"`
+	UDPPort uint16 `json:"UDPPort"`
+	TCPPort uint16 `json:"TCPPort"`
 }
 
 type CommonConfig struct {

@@ -22,6 +22,7 @@ package p2p
 import (
 	"github.com/ontio/ontology-crypto/keypair"
 	"github.com/ontio/ontology/p2pserver/common"
+	"github.com/ontio/ontology/p2pserver/dht/types"
 	"github.com/ontio/ontology/p2pserver/peer"
 )
 
@@ -46,6 +47,7 @@ type P2P interface {
 	GetNp() *peer.NbrPeers
 	GetPeer(uint64) *peer.Peer
 	SetHeight(uint64)
+	SetFeedCh(chan *types.FeedEvent)
 	IsPeerEstablished(p *peer.Peer) bool
 	Send(p *peer.Peer, data []byte, isConsensus bool) error
 	GetMsgChan(isConsensus bool) chan *common.MsgPayload

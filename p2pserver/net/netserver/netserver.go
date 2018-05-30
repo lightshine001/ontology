@@ -34,11 +34,12 @@ import (
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/core/ledger"
 	"github.com/ontio/ontology/p2pserver/common"
-	"github.com/ontio/ontology/p2pserver/dht/types"
+	dt "github.com/ontio/ontology/p2pserver/dht/types"
 	"github.com/ontio/ontology/p2pserver/message/msg_pack"
 	"github.com/ontio/ontology/p2pserver/message/types"
 	"github.com/ontio/ontology/p2pserver/net/protocol"
 	"github.com/ontio/ontology/p2pserver/peer"
+	"strconv"
 )
 
 //NewNetServer return the net object in p2p
@@ -66,6 +67,8 @@ type NetServer struct {
 	feedCh       chan *types.FeedEvent
 	stopLoop     chan struct{}
 	ConnectingNodes
+	feedCh   chan *dt.FeedEvent
+	stopLoop chan struct{}
 	PeerAddrMap
 	Np            *peer.NbrPeers
 	connectLock   sync.Mutex
@@ -100,7 +103,7 @@ type PeerAddrMap struct {
 }
 
 //init initializes attribute of network server
-func (this *NetServer) init() error {
+func (this *NetServer) init(pubKey keypair.PublicKey) error {
 	this.base.SetVersion(common.PROTOCOL_VERSION)
 
 	if config.DefConfig.Consensus.EnableConsensus {
@@ -162,15 +165,16 @@ func (this *NetServer) loop() {
 	}
 }
 
-func (this *NetServer) handleFeed(event *types.FeedEvent) {
+func (this *NetServer) handleFeed(event *dt.FeedEvent) {
 	switch event.EvtType {
-	case types.Add:
-		node := event.Event.(*types.Node)
+	case dt.Add:
+		node := event.Event.(*dt.Node)
+		log.Infof("handle feed: add a new node %v", node)
 		address := node.IP + ":" + strconv.Itoa(int(node.TCPPort))
 		this.Connect(address, false)
-	case types.Del:
-		id := event.Event.(types.NodeID)
-		this.disconnectPeer(id)
+	case dt.Del:
+		id := event.Event.(dt.NodeID)
+		log.Infof("handle feed: remove a node %s", id.String())
 	default:
 		log.Infof("handle feed: unknown feed event %d", event.EvtType)
 	}
@@ -198,7 +202,7 @@ func (this *NetServer) disconnectPeer(id types.NodeID) {
 	log.Infof("disconnect peer %s", peer.GetAddr())
 }
 
-func (this *NetServer) SetFeedCh(ch chan *types.FeedEvent) {
+func (this *NetServer) SetFeedCh(ch chan *dt.FeedEvent) {
 	this.feedCh = ch
 }
 
@@ -436,6 +440,10 @@ func (this *NetServer) Halt() {
 	if this.conslistener != nil {
 		this.conslistener.Close()
 	}
+	if this.stopLoop != nil {
+		this.stopLoop <- struct{}{}
+	}
+
 	if this.stopLoop != nil {
 		this.stopLoop <- struct{}{}
 	}

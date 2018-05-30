@@ -41,10 +41,8 @@ import (
 	"github.com/ontio/ontology/core/types"
 	"github.com/ontio/ontology/p2pserver/common"
 	"github.com/ontio/ontology/p2pserver/dht"
-<<<<<<< HEAD
+
 	dt "github.com/ontio/ontology/p2pserver/dht/types"
-=======
->>>>>>> Fix compile issue
 	"github.com/ontio/ontology/p2pserver/message/msg_pack"
 	msgtypes "github.com/ontio/ontology/p2pserver/message/types"
 	"github.com/ontio/ontology/p2pserver/message/utils"
@@ -65,13 +63,7 @@ type P2PServer struct {
 	quitSyncRecent chan bool
 	quitOnline     chan bool
 	quitHeartBeat  chan bool
-<<<<<<< HEAD
 	dht            *dht.DHT
-=======
-	dht           *dht.DHT
-	//quitSyncBlk   chan bool
-	//isSync        bool
->>>>>>> Fix compile issue
 }
 
 //ReconnectAddrs contain addr need to reconnect
@@ -88,7 +80,28 @@ func NewServer() *P2PServer {
 		network: n,
 		ledger:  ledger.DefLedger,
 	}
-	//p.dht = dht.NewDHT()
+
+	nodeID, _ := dt.PubkeyID(acc.PublicKey)
+
+	seeds := make([]*dt.Node, 0, len(config.Parameters.DHTSeeds))
+	for i := 0; i < len(config.Parameters.DHTSeeds); i++ {
+		node := config.Parameters.DHTSeeds[i]
+		pubKey, err := hex.DecodeString(node.PubKey)
+		k, err := keypair.DeserializePublicKey(pubKey)
+		if err != nil {
+			return
+		}
+		seed := &dt.Node{
+			IP:      node.IP,
+			UDPPort: node.UDPPort,
+			TCPPort: node.TCPPort,
+		}
+		seed.ID, _ = dt.PubkeyID(k)
+		seeds = append(seeds, seed)
+	}
+
+	p.dht = dht.NewDHT(nodeID, seeds)
+	p.network.SetFeedCh(p.dht.GetFeedCh())
 
 	nodeID, _ := dt.PubkeyID(acc.PublicKey)
 	seeds := loadSeeds()

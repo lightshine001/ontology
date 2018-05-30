@@ -27,18 +27,21 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ontio/ontology-crypto/keypair"
 	"github.com/ontio/ontology/common/config"
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/core/ledger"
 	"github.com/ontio/ontology/p2pserver/common"
+	dt "github.com/ontio/ontology/p2pserver/dht/types"
 	"github.com/ontio/ontology/p2pserver/message/msg_pack"
 	"github.com/ontio/ontology/p2pserver/message/types"
 	"github.com/ontio/ontology/p2pserver/net/protocol"
 	"github.com/ontio/ontology/p2pserver/peer"
+	"strconv"
 )
 
 //NewNetServer return the net object in p2p
-func NewNetServer() p2p.P2P {
+func NewNetServer(pubKey keypair.PublicKey) p2p.P2P {
 
 	n := &NetServer{
 		SyncChan: make(chan *types.MsgPayload, common.CHAN_CAPABILITY),
@@ -48,7 +51,8 @@ func NewNetServer() p2p.P2P {
 	n.PeerAddrMap.PeerSyncAddress = make(map[string]*peer.Peer)
 	n.PeerAddrMap.PeerConsAddress = make(map[string]*peer.Peer)
 
-	n.init()
+	n.stopLoop = make(chan struct{}, 1)
+	n.init(pubKey)
 	return n
 }
 
@@ -60,6 +64,8 @@ type NetServer struct {
 	SyncChan     chan *types.MsgPayload
 	ConsChan     chan *types.MsgPayload
 	ConnectingNodes
+	feedCh   chan *dt.FeedEvent
+	stopLoop chan struct{}
 	PeerAddrMap
 	Np *peer.NbrPeers
 }
@@ -78,7 +84,7 @@ type PeerAddrMap struct {
 }
 
 //init initializes attribute of network server
-func (this *NetServer) init() error {
+func (this *NetServer) init(pubKey keypair.PublicKey) error {
 	this.base.SetVersion(common.PROTOCOL_VERSION)
 
 	if config.DefConfig.Consensus.EnableConsensus {
@@ -122,6 +128,41 @@ func (this *NetServer) init() error {
 //InitListen start listening on the config port
 func (this *NetServer) Start() {
 	this.startListening()
+
+	go this.loop()
+}
+
+func (this *NetServer) loop() {
+	for {
+		select {
+		case event, ok := <-this.feedCh:
+			if ok {
+				log.Infof("EvtType %d, content %v", event.EvtType, event.Event)
+				this.handleFeed(event)
+			}
+		case <-this.stopLoop:
+			return
+		}
+	}
+}
+
+func (this *NetServer) handleFeed(event *dt.FeedEvent) {
+	switch event.EvtType {
+	case dt.Add:
+		node := event.Event.(*dt.Node)
+		log.Infof("handle feed: add a new node %v", node)
+		address := node.IP + ":" + strconv.Itoa(int(node.TCPPort))
+		this.Connect(address, false)
+	case dt.Del:
+		id := event.Event.(dt.NodeID)
+		log.Infof("handle feed: remove a node %s", id.String())
+	default:
+		log.Infof("handle feed: unknown feed event %d", event.EvtType)
+	}
+}
+
+func (this *NetServer) SetFeedCh(ch chan *dt.FeedEvent) {
+	this.feedCh = ch
 }
 
 //GetVersion return self peer`s version
@@ -340,6 +381,10 @@ func (this *NetServer) Halt() {
 	}
 	if this.conslistener != nil {
 		this.conslistener.Close()
+	}
+
+	if this.stopLoop != nil {
+		this.stopLoop <- struct{}{}
 	}
 
 }

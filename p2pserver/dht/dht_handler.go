@@ -19,8 +19,13 @@ func (this *DHT) findNodeHandle(from *net.UDPAddr, msg mt.Message) {
 		return
 	}
 
+<<<<<<< HEAD
 	this.updateNode(findNode.FromID)
 	this.findNodeReply(from, findNode.TargetID)
+=======
+	this.updateNode(findNode.P.FromID)
+	this.findNodeReply(from, findNode.P.TargetID)
+>>>>>>> fix a bug of ping handler, ensure the routing table of a pair of nodes contains each other
 }
 
 // neighborsHandle handles a neighbors message from UDP network
@@ -66,7 +71,11 @@ func (this *DHT) neighborsHandle(from *net.UDPAddr, msg mt.Message) {
 	}
 	this.messagePool.SetResults(liveNodes)
 
+<<<<<<< HEAD
 	this.updateNode(neighbors.FromID)
+=======
+	this.updateNode(neighbors.P.FromID)
+>>>>>>> fix a bug of ping handler, ensure the routing table of a pair of nodes contains each other
 }
 
 // pingHandle handles a ping message from UDP network
@@ -83,13 +92,18 @@ func (this *DHT) pingHandle(from *net.UDPAddr, msg mt.Message) {
 	}
 
 	// if routing table doesn't contain the node, add it to routing table and wait request return
+<<<<<<< HEAD
 	if node := this.routingTable.queryNode(ping.FromID); node == nil {
+=======
+	if node := this.routingTable.queryNode(ping.P.FromID); node == nil {
+>>>>>>> fix a bug of ping handler, ensure the routing table of a pair of nodes contains each other
 		node := &types.Node{
 			ID:      ping.FromID,
 			IP:      from.IP.String(),
 			UDPPort: uint16(from.Port),
 			TCPPort: uint16(ping.SrcEndPoint.TCPPort),
 		}
+<<<<<<< HEAD
 		this.addNode(node)
 	} else {
 		// update this node
@@ -97,6 +111,17 @@ func (this *DHT) pingHandle(from *net.UDPAddr, msg mt.Message) {
 		this.routingTable.addNode(node, bucketIndex)
 	}
 	this.pong(from)
+=======
+		requestId := this.addNode(node, true)
+		if len(requestId) > 0 {
+			this.messagePool.Wait([]types.RequestId{requestId})
+		}
+	}
+	// query again, if routing table contain the node, pong to from node
+	if node := this.routingTable.queryNode(ping.P.FromID); node != nil {
+		this.pong(from)
+	}
+>>>>>>> fix a bug of ping handler, ensure the routing table of a pair of nodes contains each other
 	this.DisplayRoutingTable()
 }
 
@@ -122,9 +147,10 @@ func (this *DHT) pongHandle(from *net.UDPAddr, msg mt.Message) {
 	}
 
 	// add to routing table
-	this.addNode(node)
+	this.addNode(node, false)
 	// remove node from request pool
 	this.messagePool.DeleteRequest(requesetId)
+	log.Info("receive pong of ", requesetId)
 }
 
 // update the node to bucket when receive message from the node

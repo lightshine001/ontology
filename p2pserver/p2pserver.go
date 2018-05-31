@@ -84,8 +84,19 @@ func NewServer(acc *account.Account) *P2PServer {
 		ledger:  ledger.DefLedger,
 	}
 
-	nodeID, _ := dt.PubkeyID(acc.PubKey())
+	nodeID, _ := dt.PubkeyID(acc.PublicKey)
+	seeds := loadSeeds()
+	p.dht = dht.NewDHT(nodeID, seeds)
+	p.network.SetFeedCh(p.dht.GetFeedCh())
 
+	p.msgRouter = utils.NewMsgRouter(p.network)
+	p.blockSync = NewBlockSyncMgr(p)
+	p.quitOnline = make(chan bool)
+	p.quitHeartBeat = make(chan bool)
+	return p
+}
+
+func loadSeeds() []*dt.Node {
 	seeds := make([]*dt.Node, 0, len(config.DefConfig.Genesis.DHT.Seeds))
 	for i := 0; i < len(config.DefConfig.Genesis.DHT.Seeds); i++ {
 		node := config.DefConfig.Genesis.DHT.Seeds[i]
@@ -102,17 +113,7 @@ func NewServer(acc *account.Account) *P2PServer {
 		seed.ID, _ = dt.PubkeyID(k)
 		seeds = append(seeds, seed)
 	}
-
-	p.dht = dht.NewDHT(nodeID, seeds)
-	p.network.SetFeedCh(p.dht.GetFeedCh())
-
-	p.msgRouter = utils.NewMsgRouter(p.network)
-	p.blockSync = NewBlockSyncMgr(p)
-	p.recentPeers = make([]string, common.RECENT_LIMIT)
-	p.quitSyncRecent = make(chan bool)
-	p.quitOnline = make(chan bool)
-	p.quitHeartBeat = make(chan bool)
-	return p
+	return seeds
 }
 
 //GetConnectionCnt return the established connect count
@@ -127,6 +128,7 @@ func (this *P2PServer) Start() error {
 	} else {
 		return errors.New("p2p network invalid")
 	}
+
 	if this.msgRouter != nil {
 		this.msgRouter.Start()
 	} else {
@@ -137,7 +139,20 @@ func (this *P2PServer) Start() error {
 	go this.keepOnlineService()
 	go this.heartBeatService()
 	go this.blockSync.Start()
+	go this.dht.Start()
+	go this.DisplayDHT()
 	return nil
+}
+
+func (this *P2PServer) DisplayDHT() {
+	timer := time.NewTicker(3 * time.Second)
+	for {
+		select {
+		case <-timer.C:
+			log.Info("DHT table is:")
+			this.dht.DisplayRoutingTable()
+		}
+	}
 }
 
 //Stop halt all service by send signal to channels
@@ -314,40 +329,6 @@ func (this *P2PServer) WaitForPeersStart() {
 	}
 }
 
-//connectSeeds connect the seeds in seedlist and call for nbr list
-func (this *P2PServer) connectSeeds() {
-	if this.reachMinConnection() {
-		return
-	}
-	seedNodes := config.DefConfig.Genesis.SeedList
-	for _, nodeAddr := range seedNodes {
-		found := false
-		var p *peer.Peer
-		var ip net.IP
-		np := this.network.GetNp()
-		np.Lock()
-		for _, tn := range np.List {
-			ipAddr, _ := tn.GetAddr16()
-			ip = ipAddr[:]
-			addrString := ip.To16().String() + ":" +
-				strconv.Itoa(int(tn.GetSyncPort()))
-			if nodeAddr == addrString {
-				p = tn
-				found = true
-				break
-			}
-		}
-		np.Unlock()
-		if found {
-			if p.GetSyncState() == common.ESTABLISH {
-				this.reqNbrList(p)
-			}
-		} else { //not found
-			go this.network.Connect(nodeAddr, false)
-		}
-	}
-}
-
 //reachMinConnection return whether net layer have enough link under different config
 func (this *P2PServer) reachMinConnection() bool {
 	consensusType := strings.ToLower(config.DefConfig.Genesis.ConsensusType)
@@ -429,7 +410,6 @@ func (this *P2PServer) keepOnlineService() {
 	for {
 		select {
 		case <-t.C:
-			this.connectSeeds()
 			this.retryInactivePeer()
 			t.Stop()
 			t.Reset(time.Second * common.CONN_MONITOR)

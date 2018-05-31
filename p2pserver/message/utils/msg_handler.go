@@ -22,7 +22,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
-	"net"
+	//"net"
 	"strconv"
 	"strings"
 	"time"
@@ -38,6 +38,7 @@ import (
 	"github.com/ontio/ontology/p2pserver/message/msg_pack"
 	msgTypes "github.com/ontio/ontology/p2pserver/message/types"
 	"github.com/ontio/ontology/p2pserver/net/protocol"
+	"net"
 )
 
 // AddrReqHandle handles the neighbor address request from peer

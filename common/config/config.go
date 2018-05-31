@@ -498,7 +498,7 @@ type SOLOConfig struct {
 }
 
 type DHTConfig struct {
-	UDPPort uint      `json:"DHTUDPPort"`
+	UDPPort uint      `json:"UDPPort"`
 	Seeds   []DHTNode `json:"Seeds"`
 }
 

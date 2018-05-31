@@ -28,6 +28,8 @@ import (
 	"sync"
 	"time"
 
+	"bytes"
+	"encoding/binary"
 	"github.com/ontio/ontology-crypto/keypair"
 	oc "github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/config"
@@ -168,18 +170,17 @@ func (this *NetServer) handleFeed(event *dt.FeedEvent) {
 	switch event.EvtType {
 	case dt.Add:
 		node := event.Event.(*dt.Node)
-		log.Infof("handle feed: add a new node %v", node)
 		address := node.IP + ":" + strconv.Itoa(int(node.TCPPort))
 		this.Connect(address, false)
 	case dt.Del:
 		id := event.Event.(dt.NodeID)
-		log.Infof("handle feed: remove a node %s", id.String())
+		this.disconnectPeer(id)
 	default:
 		log.Infof("handle feed: unknown feed event %d", event.EvtType)
 	}
 }
 
-func (this *NetServer) disconnectPeer(id types.NodeID) {
+func (this *NetServer) disconnectPeer(id dt.NodeID) {
 	//Todo: use unified id
 	var peerID uint64
 	err := binary.Read(bytes.NewBuffer(id[:8]), binary.LittleEndian, &(peerID))

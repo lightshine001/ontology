@@ -84,8 +84,19 @@ func NewServer(acc *account.Account) *P2PServer {
 		ledger:  ledger.DefLedger,
 	}
 
-	nodeID, _ := dt.PubkeyID(acc.PubKey())
+	nodeID, _ := dt.PubkeyID(acc.PublicKey)
+	seeds := loadSeeds()
+	p.dht = dht.NewDHT(nodeID, seeds)
+	p.network.SetFeedCh(p.dht.GetFeedCh())
 
+	p.msgRouter = utils.NewMsgRouter(p.network)
+	p.blockSync = NewBlockSyncMgr(p)
+	p.quitOnline = make(chan bool)
+	p.quitHeartBeat = make(chan bool)
+	return p
+}
+
+func loadSeeds() []*dt.Node {
 	seeds := make([]*dt.Node, 0, len(config.DefConfig.Genesis.DHT.Seeds))
 	for i := 0; i < len(config.DefConfig.Genesis.DHT.Seeds); i++ {
 		node := config.DefConfig.Genesis.DHT.Seeds[i]
@@ -103,19 +114,7 @@ func NewServer(acc *account.Account) *P2PServer {
 		seeds = append(seeds, seed)
 	}
 
-	p.dht = dht.NewDHT(nodeID, seeds)
-	p.network.SetFeedCh(p.dht.GetFeedCh())
-
-	nodeID, _ := dt.PubkeyID(acc.PublicKey)
-	seeds := loadSeeds()
-	p.dht = dht.NewDHT(nodeID, seeds)
-	p.network.SetFeedCh(p.dht.GetFeedCh())
-
-	p.msgRouter = utils.NewMsgRouter(p.network)
-	p.blockSync = NewBlockSyncMgr(p)
-	p.quitOnline = make(chan bool)
-	p.quitHeartBeat = make(chan bool)
-	return p
+	return seeds
 }
 
 func loadSeeds() []*dt.Node {

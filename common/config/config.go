@@ -198,6 +198,7 @@ var PolarisConfig = &GenesisConfig{
 				UDPPort: 40010,
 				TCPPort: 40011},
 			{
+<<<<<<< HEAD
 				PubKey:  "120202fabdf17557e77082be2be61f90527e23187605cd8774d487da4e6bef97943d0d",
 				IP:      "127.0.0.1",
 				UDPPort: 50010,
@@ -288,6 +289,8 @@ var MainNetConfig = &GenesisConfig{
 				UDPPort: 40010,
 				TCPPort: 40011},
 			{
+=======
+>>>>>>> fix a bug of ping handler, ensure the routing table of a pair of nodes contains each other
 				PubKey:  "120202fabdf17557e77082be2be61f90527e23187605cd8774d487da4e6bef97943d0d",
 				IP:      "127.0.0.1",
 				UDPPort: 50010,

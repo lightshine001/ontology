@@ -294,9 +294,13 @@ func (this *DHT) findNode(remotePeer *types.Node, targetID types.NodeID) error {
 // addNode adds a node to the K bucket.
 // remotePeer: added node
 // shouldWait: if ping the lastNode located in the same k bucket of remotePeer, the request should be wait or not
+<<<<<<< HEAD
 func (this *DHT) addNode(remotePeer *types.Node) {
+=======
+func (this *DHT) addNode(remotePeer *types.Node, shouldWait bool) types.RequestId {
+>>>>>>> fix a bug of ping handler, ensure the routing table of a pair of nodes contains each other
 	if remotePeer == nil || remotePeer.ID == this.nodeID {
-		return
+		return ""
 	}
 
 	// find node in own bucket
@@ -316,15 +320,20 @@ func (this *DHT) addNode(remotePeer *types.Node) {
 			if err != nil {
 				this.routingTable.removeNode(lastNode.ID)
 				this.routingTable.addNode(remoteNode, bucketIndex)
-				return
+				return ""
 			}
-			if _, isNewRequest := this.messagePool.AddRequest(lastNode,
-				types.DHT_PING_REQUEST, remotePeer, false); isNewRequest {
+			if requestId, isNewRequest := this.messagePool.AddRequest(lastNode,
+				types.DHT_PING_REQUEST, remotePeer, shouldWait); isNewRequest {
 				this.ping(addr)
+				return requestId
 			}
 		}
 	}
+<<<<<<< HEAD
 	return
+=======
+	return ""
+>>>>>>> fix a bug of ping handler, ensure the routing table of a pair of nodes contains each other
 }
 
 // ping the remote node

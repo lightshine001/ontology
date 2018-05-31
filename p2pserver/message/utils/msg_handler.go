@@ -20,7 +20,7 @@ package utils
 
 import (
 	"errors"
-	"net"
+	//"net"
 	"strconv"
 	"strings"
 	"time"
@@ -37,42 +37,6 @@ import (
 	msgTypes "github.com/ontio/ontology/p2pserver/message/types"
 	"github.com/ontio/ontology/p2pserver/net/protocol"
 )
-
-// AddrReqHandle handles the neighbor address request from peer
-func AddrReqHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args ...interface{}) {
-	log.Debug("receive addr request message", data.Addr, data.Id)
-	remotePeer := p2p.GetPeer(data.Id)
-	if remotePeer == nil {
-		log.Error("remotePeer invalid in AddrReqHandle")
-		return
-	}
-
-	var addrStr []msgCommon.PeerAddr
-	addrStr = p2p.GetNeighborAddrs()
-	//check mask peers
-	mskPeers := config.DefConfig.P2PNode.ReservedCfg.MaskPeers
-	if config.DefConfig.P2PNode.ReservedPeersOnly && len(mskPeers) > 0 {
-		for i := 0; i < len(addrStr); i++ {
-			var ip net.IP
-			ip = addrStr[i].IpAddr[:]
-			address := ip.To16().String()
-			for j := 0; j < len(mskPeers); j++ {
-				if address == mskPeers[j] {
-					addrStr = append(addrStr[:i], addrStr[i+1:]...)
-					i--
-					break
-				}
-			}
-		}
-
-	}
-	msg := msgpack.NewAddrs(addrStr)
-	err := p2p.Send(remotePeer, msg, false)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-}
 
 // HeaderReqHandle handles the header sync req from peer
 func HeadersReqHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args ...interface{}) {
@@ -440,43 +404,6 @@ func VerAckHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, arg
 				go p2p.Connect(nodeConsensusAddr, true)
 			}
 		}
-
-		msg := msgpack.NewAddrReq()
-		go p2p.Send(remotePeer, msg, false)
-	}
-
-}
-
-// AddrHandle handles the neighbor address response message from peer
-func AddrHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args ...interface{}) {
-	log.Debug("handle addr message", data.Addr, data.Id)
-
-	var msg = data.Payload.(*msgTypes.Addr)
-	for _, v := range msg.NodeAddrs {
-		var ip net.IP
-		ip = v.IpAddr[:]
-		address := ip.To16().String() + ":" + strconv.Itoa(int(v.Port))
-
-		if v.ID == p2p.GetID() {
-			continue
-		}
-
-		if p2p.NodeEstablished(v.ID) {
-			continue
-		}
-
-		if ret := p2p.GetPeerFromAddr(address); ret != nil {
-			continue
-		}
-
-		if v.Port == 0 {
-			continue
-		}
-		if p2p.IsAddrFromConnecting(address) {
-			continue
-		}
-		log.Debug("connect ip address:", address)
-		go p2p.Connect(address, false)
 	}
 }
 

@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/ontio/ontology-crypto/keypair"
+	oc "github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/config"
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/core/ledger"
@@ -280,8 +281,8 @@ func (this *NetServer) NodeEstablished(id uint64) bool {
 }
 
 //Xmit called by actor, broadcast msg
-func (this *NetServer) Xmit(msg types.Message, isCons bool) {
-	this.Np.Broadcast(msg, isCons)
+func (this *NetServer) Xmit(msg types.Message, hash oc.Uint256, isCons bool) {
+	this.Np.Broadcast(msg, hash, isCons)
 }
 
 //GetMsgChan return sync or consensus channel when msgrouter need msg input

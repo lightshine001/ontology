@@ -42,6 +42,8 @@ const (
 	MAX_INV_HDR_CNT  = 500              //inventory count once when req inv
 	MAX_REQ_BLK_ONCE = 16               //req blk count once from one peer when sync blk
 	MAX_MSG_LEN      = 30 * 1024 * 1024 //the maximum message length
+	NETMAGIC         = 0x74746e41       //network magic number
+	MAX_CACHE_SIZE   = 65536            // Max hash cache
 	MAX_PAYLOAD_LEN  = MAX_MSG_LEN - MSG_HDR_LEN
 )
 

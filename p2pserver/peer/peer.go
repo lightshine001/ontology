@@ -158,7 +158,6 @@ func NewPeer() *Peer {
 	p := &Peer{
 		syncState: common.INIT,
 		consState: common.INIT,
-
 		chF:       make(chan func() error),
 		knownHash: set.New(),
 	}

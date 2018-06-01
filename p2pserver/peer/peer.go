@@ -27,7 +27,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/fatih/set"
+
 	"github.com/ontio/ontology-crypto/keypair"
+	comm "github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/p2pserver/common"
 	conn "github.com/ontio/ontology/p2pserver/link"
@@ -146,7 +149,9 @@ type Peer struct {
 	consState uint32
 	txnCnt    uint64
 	rxTxnCnt  uint64
-	chF       chan func() error
+	knownHash *set.Set
+	//knownHash map[common.Uint256]bool
+	chF chan func() error
 }
 
 //backend run function in backend
@@ -162,6 +167,7 @@ func NewPeer() *Peer {
 		syncState: common.INIT,
 		consState: common.INIT,
 		chF:       make(chan func() error),
+		knownHash: set.New(),
 	}
 	p.SyncLink = conn.NewLink()
 	p.ConsLink = conn.NewLink()
@@ -383,6 +389,21 @@ func (this *Peer) GetHttpInfoPort() uint16 {
 //SetHttpInfoPort set peer`s httpinfo port
 func (this *Peer) SetHttpInfoPort(port uint16) {
 	this.base.SetHttpInfoPort(port)
+}
+
+//MarkHashAsSeen cache a hash. When set is full, drop
+// a previously known hash
+func (this *Peer) MarkHashAsSeen(hash comm.Uint256) {
+	if this.knownHash.Size() >= common.MAX_CACHE_SIZE {
+		this.knownHash.Pop()
+	}
+	log.Infof("MarkHashAsSeen: hash %x, peer id %x", hash, this.GetID())
+	this.knownHash.Add(hash)
+}
+
+//IsHashContained check whether a given hash known by a peer
+func (this *Peer) IsHashContained(hash comm.Uint256) bool {
+	return this.knownHash.Has(hash)
 }
 
 //UpdateInfo update peer`s information

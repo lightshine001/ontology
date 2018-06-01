@@ -20,6 +20,7 @@ package types
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"io"
 
@@ -40,12 +41,21 @@ type ConsensusPayload struct {
 	Data            []byte
 	Owner           keypair.PublicKey
 	Signature       []byte
-	hash            common.Uint256
+	hash            *common.Uint256
 }
 
 //get the consensus payload hash
 func (this *ConsensusPayload) Hash() common.Uint256 {
-	return common.Uint256{}
+	if this.hash != nil {
+		return *this.hash
+	}
+	buf := new(bytes.Buffer)
+	this.SerializeUnsigned(buf)
+	temp := sha256.Sum256(buf.Bytes())
+	hash := common.Uint256(sha256.Sum256(temp[:]))
+
+	this.hash = &hash
+	return hash
 }
 
 //Check whether header is correct

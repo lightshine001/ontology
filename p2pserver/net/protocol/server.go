@@ -21,6 +21,7 @@ package p2p
 
 import (
 	"github.com/ontio/ontology-crypto/keypair"
+	oc "github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/p2pserver/common"
 	"github.com/ontio/ontology/p2pserver/dht/types"
 	"github.com/ontio/ontology/p2pserver/peer"
@@ -61,5 +62,5 @@ type P2P interface {
 	AddNbrNode(*peer.Peer)
 	DelNbrNode(id uint64) (*peer.Peer, bool)
 	NodeEstablished(uint64) bool
-	Xmit([]byte, bool)
+	Xmit([]byte, oc.Uint256, bool)
 }

@@ -145,6 +145,7 @@ func (this *P2PServer) DisplayDHT() {
 		case <-timer.C:
 			log.Info("DHT table is:")
 			this.dht.DisplayRoutingTable()
+			log.Info("Neighbor peers: ", this.GetConnectionCnt())
 		}
 	}
 }
@@ -183,6 +184,7 @@ func (this *P2PServer) Xmit(message interface{}) error {
 	log.Debug()
 	var buffer []byte
 	var err error
+	var msgHash comm.Uint256
 	isConsensus := false
 	switch message.(type) {
 	case *types.Transaction:
@@ -193,6 +195,7 @@ func (this *P2PServer) Xmit(message interface{}) error {
 			log.Error("Error New Tx message: ", err)
 			return err
 		}
+		msgHash = txn.Hash()
 
 	case *types.Block:
 		log.Debug("TX block message")
@@ -202,6 +205,8 @@ func (this *P2PServer) Xmit(message interface{}) error {
 			log.Error("Error New Block message: ", err)
 			return err
 		}
+		msgHash = block.Hash()
+
 	case *msgtypes.ConsensusPayload:
 		log.Debug("TX consensus message")
 		consensusPayload := message.(*msgtypes.ConsensusPayload)
@@ -211,6 +216,8 @@ func (this *P2PServer) Xmit(message interface{}) error {
 			return err
 		}
 		isConsensus = true
+		msgHash = consensusPayload.Hash()
+
 	case comm.Uint256:
 		log.Debug("TX block hash message")
 		hash := message.(comm.Uint256)
@@ -223,12 +230,14 @@ func (this *P2PServer) Xmit(message interface{}) error {
 			log.Error("Error New inv message")
 			return err
 		}
+		msgHash = hash
+
 	default:
 		log.Warnf("Unknown Xmit message %v , type %v", message,
 			reflect.TypeOf(message))
 		return errors.New("Unknown Xmit message type")
 	}
-	this.network.Xmit(buffer, isConsensus)
+	this.network.Xmit(buffer, msgHash, isConsensus)
 	return nil
 }
 

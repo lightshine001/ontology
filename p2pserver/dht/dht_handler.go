@@ -44,16 +44,25 @@ func (this *DHT) neighborsHandle(from *net.UDPAddr, msg mt.Message) {
 	this.messagePool.DeleteRequest(requestId)
 
 	pingReqIds := make([]types.RequestId, 0)
+<<<<<<< HEAD
 
 	for i := 0; i < len(neighbors.Nodes); i++ {
 		node := &neighbors.Nodes[i]
 		if node.ID == this.nodeID {
 			continue
 		}
+=======
+	for i := 0; i < len(neighbors.P.Nodes); i++ {
+		node := &neighbors.P.Nodes[i]
+>>>>>>> optimize lookup
 		// ping this node
 		addr, err := getNodeUDPAddr(node)
 		if err != nil {
 			continue
+<<<<<<< HEAD
+=======
+
+>>>>>>> optimize lookup
 		}
 		reqId, isNewRequest := this.messagePool.AddRequest(node, types.DHT_PING_REQUEST, nil, true)
 		if isNewRequest {
@@ -63,8 +72,13 @@ func (this *DHT) neighborsHandle(from *net.UDPAddr, msg mt.Message) {
 	}
 	this.messagePool.Wait(pingReqIds)
 	liveNodes := make([]*types.Node, 0)
+<<<<<<< HEAD
 	for i := 0; i < len(neighbors.Nodes); i++ {
 		node := &neighbors.Nodes[i]
+=======
+	for i := 0; i < len(neighbors.P.Nodes); i++ {
+		node := &neighbors.P.Nodes[i]
+>>>>>>> optimize lookup
 		if queryResult := this.routingTable.queryNode(node.ID); queryResult != nil {
 			liveNodes = append(liveNodes, node)
 		}
@@ -104,6 +118,7 @@ func (this *DHT) pingHandle(from *net.UDPAddr, msg mt.Message) {
 			TCPPort: uint16(ping.SrcEndPoint.TCPPort),
 		}
 <<<<<<< HEAD
+<<<<<<< HEAD
 		this.addNode(node)
 	} else {
 		// update this node
@@ -122,6 +137,15 @@ func (this *DHT) pingHandle(from *net.UDPAddr, msg mt.Message) {
 		this.pong(from)
 	}
 >>>>>>> fix a bug of ping handler, ensure the routing table of a pair of nodes contains each other
+=======
+		this.addNode(node)
+	} else {
+		// update this node
+		bucketIndex, _ := this.routingTable.locateBucket(ping.P.FromID)
+		this.routingTable.addNode(node, bucketIndex)
+	}
+	this.pong(from)
+>>>>>>> optimize lookup
 	this.DisplayRoutingTable()
 }
 
@@ -147,7 +171,7 @@ func (this *DHT) pongHandle(from *net.UDPAddr, msg mt.Message) {
 	}
 
 	// add to routing table
-	this.addNode(node, false)
+	this.addNode(node)
 	// remove node from request pool
 	this.messagePool.DeleteRequest(requesetId)
 	log.Info("receive pong of ", requesetId)

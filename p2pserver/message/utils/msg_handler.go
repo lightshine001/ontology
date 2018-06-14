@@ -146,13 +146,13 @@ func BlockHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args
 		log.Error("remotePeer invalid in BlockHandle")
 		return
 	}
-	remotePeer.MarkHashAsSeen(block.Blk.Hash())
 
 	if pid != nil {
 		var block = data.Payload.(*msgTypes.Block)
 		input := &msgCommon.AppendBlock{
 			Block: &block.Blk,
 		}
+		remotePeer.MarkHashAsSeen(block.Blk.Hash())
 		pid.Tell(input)
 	}
 }
@@ -166,7 +166,6 @@ func ConsensusHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, 
 		log.Error("remotePeer invalid in BlockHandle")
 		return
 	}
-	remotePeer.MarkHashAsSeen(consensus.Cons.Hash())
 
 	if actor.ConsensusPid != nil {
 		var consensus = data.Payload.(*msgTypes.Consensus)
@@ -174,6 +173,7 @@ func ConsensusHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, 
 			log.Error(err)
 			return
 		}
+		remotePeer.MarkHashAsSeen(consensus.Cons.Hash())
 		actor.ConsensusPid.Tell(&consensus.Cons)
 	}
 }

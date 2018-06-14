@@ -15,12 +15,12 @@ func (this *DHT) findNodeHandle(from *net.UDPAddr, packet []byte) {
 		return
 	}
 
-	if node := this.routingTable.queryNode(findNode.P.FromID); node == nil {
+	if node := this.routingTable.queryNode(findNode.FromID); node == nil {
 		return
 	}
 
-	this.updateNode(findNode.P.FromID)
-	this.findNodeReply(from, findNode.P.TargetID)
+	this.updateNode(findNode.FromID)
+	this.findNodeReply(from, findNode.TargetID)
 }
 
 // neighborsHandle handles a neighbors message from UDP network
@@ -31,17 +31,17 @@ func (this *DHT) neighborsHandle(from *net.UDPAddr, packet []byte) {
 		return
 	}
 
-	if node := this.routingTable.queryNode(neighbors.P.FromID); node == nil {
+	if node := this.routingTable.queryNode(neighbors.FromID); node == nil {
 		return
 	}
 
-	requestId := types.ConstructRequestId(neighbors.P.FromID,
+	requestId := types.ConstructRequestId(neighbors.FromID,
 		types.DHT_FIND_NODE_REQUEST)
 	this.messagePool.DeleteRequest(requestId)
 
 	pingReqIds := make([]types.RequestId, 0)
-	for i := 0; i < len(neighbors.P.Nodes); i++ {
-		node := &neighbors.P.Nodes[i]
+	for i := 0; i < len(neighbors.Nodes); i++ {
+		node := &neighbors.Nodes[i]
 		// ping this node
 		addr, err := getNodeUDPAddr(node)
 		if err != nil {
@@ -56,15 +56,15 @@ func (this *DHT) neighborsHandle(from *net.UDPAddr, packet []byte) {
 	}
 	this.messagePool.Wait(pingReqIds)
 	liveNodes := make([]*types.Node, 0)
-	for i := 0; i < len(neighbors.P.Nodes); i++ {
-		node := &neighbors.P.Nodes[i]
+	for i := 0; i < len(neighbors.Nodes); i++ {
+		node := &neighbors.Nodes[i]
 		if queryResult := this.routingTable.queryNode(node.ID); queryResult != nil {
 			liveNodes = append(liveNodes, node)
 		}
 	}
 	this.messagePool.SetResults(liveNodes)
 
-	this.updateNode(neighbors.P.FromID)
+	this.updateNode(neighbors.FromID)
 }
 
 // pingHandle handles a ping message from UDP network
@@ -75,24 +75,24 @@ func (this *DHT) pingHandle(from *net.UDPAddr, packet []byte) {
 		return
 	}
 
-	if ping.P.Version != this.version {
+	if ping.Version != this.version {
 		log.Errorf("pingHandle: version is incompatible. local %d remote %d",
-			this.version, ping.P.Version)
+			this.version, ping.Version)
 		return
 	}
 
 	// if routing table doesn't contain the node, add it to routing table and wait request return
-	if node := this.routingTable.queryNode(ping.P.FromID); node == nil {
+	if node := this.routingTable.queryNode(ping.FromID); node == nil {
 		node := &types.Node{
-			ID:      ping.P.FromID,
+			ID:      ping.FromID,
 			IP:      from.IP.String(),
 			UDPPort: uint16(from.Port),
-			TCPPort: uint16(ping.P.SrcEndPoint.TCPPort),
+			TCPPort: uint16(ping.SrcEndPoint.TCPPort),
 		}
 		this.addNode(node)
 	} else {
 		// update this node
-		bucketIndex, _ := this.routingTable.locateBucket(ping.P.FromID)
+		bucketIndex, _ := this.routingTable.locateBucket(ping.FromID)
 		this.routingTable.addNode(node, bucketIndex)
 	}
 	this.pong(from)
@@ -107,17 +107,17 @@ func (this *DHT) pongHandle(from *net.UDPAddr, packet []byte) {
 		return
 	}
 
-	if pong.P.Version != this.version {
+	if pong.Version != this.version {
 		log.Errorf("pongHandle: version is incompatible. local %d remote %d",
-			this.version, pong.P.Version)
+			this.version, pong.Version)
 		return
 	}
 
-	requesetId := types.ConstructRequestId(pong.P.FromID, types.DHT_PING_REQUEST)
+	requesetId := types.ConstructRequestId(pong.FromID, types.DHT_PING_REQUEST)
 	node, ok := this.messagePool.GetRequestData(requesetId)
 	if !ok {
 		// request pool doesn't contain the node, ping timeout
-		this.routingTable.removeNode(pong.P.FromID)
+		this.routingTable.removeNode(pong.FromID)
 		return
 	}
 

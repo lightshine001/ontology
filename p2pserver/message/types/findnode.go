@@ -40,12 +40,16 @@ type FindNodePayload struct {
 
 >>>>>>> add msg pack for ping/pong, findnode/neighbors
 type FindNode struct {
+<<<<<<< HEAD
 	FromID   types.NodeID
 	TargetID types.NodeID
 }
 
 func (this *FindNode) CmdType() string {
 	return common.DHT_FIND_NODE
+=======
+	P FindNodePayload
+>>>>>>> fix bug after rebase
 }
 
 //Serialize message payload
@@ -56,11 +60,14 @@ func (this FindNode) Serialization() ([]byte, error) {
 		log.Error("failed to write DHT findnode from id failed")
 		return nil, err
 	}
+<<<<<<< HEAD
 	err = binary.Write(p, binary.LittleEndian, this.TargetID)
 	if err != nil {
 		log.Error("failed to write DHT findnode target id failed")
 		return nil, err
 	}
+=======
+>>>>>>> fix bug after rebase
 
 	return p.Bytes(), nil
 }
@@ -69,12 +76,16 @@ func (this FindNode) Serialization() ([]byte, error) {
 func (this *FindNode) Deserialization(p []byte) error {
 	buf := bytes.NewBuffer(p)
 
+<<<<<<< HEAD
 	err := binary.Read(buf, binary.LittleEndian, &this.FromID)
 	if err != nil {
 		log.Error("Parse DHT findnode message error", err)
 		return errors.New("Parse DHT findnode from id message error")
 	}
 	err = binary.Read(buf, binary.LittleEndian, &this.TargetID)
+=======
+	err := binary.Read(buf, binary.LittleEndian, &this.P)
+>>>>>>> fix bug after rebase
 	if err != nil {
 		log.Error("Parse DHT findnode message error", err)
 		return errors.New("Parse DHT findnode target id message error")

@@ -20,7 +20,6 @@
 package p2p
 
 import (
-	"github.com/ontio/ontology-crypto/keypair"
 	oc "github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/p2pserver/common"
 	dt "github.com/ontio/ontology/p2pserver/dht/types"

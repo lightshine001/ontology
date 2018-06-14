@@ -20,7 +20,6 @@ package types
 
 import (
 	"bytes"
-	"encoding/binary"
 	//"errors"
 
 	"github.com/ontio/ontology/common/log"
@@ -34,14 +33,7 @@ type NeighborsPayload struct {
 }
 
 type Neighbors struct {
-	Hdr MsgHdr
 	P   NeighborsPayload
-}
-
-//Check whether header is correct
-func (this Neighbors) Verify(buf []byte) error {
-	err := this.Hdr.Verify(buf)
-	return err
 }
 
 //Serialize message payload
@@ -82,25 +74,12 @@ func (this Neighbors) Serialization() ([]byte, error) {
 		}
 	}
 
-	checkSumBuf := CheckSum(p.Bytes())
-	this.Hdr.Init("neighbors", checkSumBuf, uint32(len(p.Bytes())))
-
-	hdrBuf, err := this.Hdr.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	buf := bytes.NewBuffer(hdrBuf)
-	data := append(buf.Bytes(), p.Bytes()...)
-	return data, nil
+	return p.Bytes(), nil
 }
 
 //Deserialize message payload
 func (this *Neighbors) Deserialization(p []byte) error {
 	buf := bytes.NewBuffer(p)
-	err := binary.Read(buf, binary.LittleEndian, &(this.Hdr))
-	if err != nil {
-		return err
-	}
 
 	id, err := serialization.ReadVarBytes(buf)
 	if err != nil {

@@ -20,8 +20,6 @@ package types
 
 import (
 	"bytes"
-	"encoding/binary"
-
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/common/serialization"
 	"github.com/ontio/ontology/p2pserver/dht/types"
@@ -41,14 +39,7 @@ type DHTPingPayload struct {
 }
 
 type DHTPing struct {
-	Hdr MsgHdr
-	P   DHTPingPayload
-}
-
-//Check whether header is correct
-func (this DHTPing) Verify(buf []byte) error {
-	err := this.Hdr.Verify(buf)
-	return err
+	P DHTPingPayload
 }
 
 //Serialize message payload
@@ -112,27 +103,14 @@ func (this DHTPing) Serialization() ([]byte, error) {
 		return nil, err
 	}
 
-	checkSumBuf := CheckSum(p.Bytes())
-	this.Hdr.Init("DHTPing", checkSumBuf, uint32(len(p.Bytes())))
-
-	hdrBuf, err := this.Hdr.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	buf := bytes.NewBuffer(hdrBuf)
-	data := append(buf.Bytes(), p.Bytes()...)
-	return data, nil
+	return p.Bytes(), nil
 }
 
 //Deserialize message payload
 func (this *DHTPing) Deserialization(p []byte) error {
 	buf := bytes.NewBuffer(p)
-	err := binary.Read(buf, binary.LittleEndian, &(this.Hdr))
-	if err != nil {
-		log.Errorf("failed to deserialize ping header %v", err)
-		return err
-	}
 
+	var err error
 	this.P.Version, err = serialization.ReadUint16(buf)
 	if err != nil {
 		log.Errorf("failed to deserialize ping version %v", err)

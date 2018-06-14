@@ -39,8 +39,13 @@ type DHTPing struct {
 	DestEndPoint EndPoint
 }
 
+<<<<<<< HEAD
 func (this *DHTPing) CmdType() string {
 	return common.DHT_PING
+=======
+type DHTPing struct {
+	P DHTPingPayload
+>>>>>>> fix bug after rebase
 }
 
 //Serialize message
@@ -111,7 +116,11 @@ func (this *DHTPing) Deserialization(p []byte) error {
 	buf := bytes.NewBuffer(p)
 
 	var err error
+<<<<<<< HEAD
 	this.Version, err = serialization.ReadUint16(buf)
+=======
+	this.P.Version, err = serialization.ReadUint16(buf)
+>>>>>>> fix bug after rebase
 	if err != nil {
 		log.Errorf("failed to deserialize ping version %v", err)
 		return err

@@ -352,25 +352,36 @@ func (this *DHT) ping(addr *net.UDPAddr) error {
 	}
 	pingMsg := msgpack.NewDHTPing(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
 	bf := new(bytes.Buffer)
+<<<<<<< HEAD
 	err := mt.WriteMessage(bf, pingMsg)
 	if err != nil {
 		log.Info(err)
 		return err
 	}
+=======
+	mt.WriteMessage(bf, pingMsg)
+>>>>>>> clean dht network message
 	this.send(addr, bf.Bytes())
 	return nil
 }
 
 // pong reply remote node when receiving ping
 func (this *DHT) pong(addr *net.UDPAddr) error {
+<<<<<<< HEAD
 
+=======
+>>>>>>> clean dht network message
 	ip := net.ParseIP(this.addr).To16()
 	if ip == nil {
 		log.Error("Parse IP address error\n", this.addr)
 		return errors.New("Parse IP address error")
 	}
+<<<<<<< HEAD
 
 	pongMsg := msgpack.NewDHTPong(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
+=======
+	pongMsg := msgpack.NewDHTPing(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
+>>>>>>> clean dht network message
 	bf := new(bytes.Buffer)
 	mt.WriteMessage(bf, pongMsg)
 	this.send(addr, bf.Bytes())
@@ -386,7 +397,10 @@ func (this *DHT) findNodeReply(addr *net.UDPAddr, targetId types.NodeID) error {
 	bf := new(bytes.Buffer)
 	mt.WriteMessage(bf, neighborsMsg)
 	this.send(addr, bf.Bytes())
+<<<<<<< HEAD
 
+=======
+>>>>>>> clean dht network message
 	return nil
 }
 
@@ -401,6 +415,7 @@ func (this *DHT) processPacket(from *net.UDPAddr, packet []byte) {
 	log.Infof("Recv UDP msg %s %v", msgType, from)
 	switch msgType {
 	case common.DHT_PING:
+<<<<<<< HEAD
 		this.pingHandle(from, msg)
 	case common.DHT_PONG:
 		this.pongHandle(from, msg)
@@ -408,6 +423,15 @@ func (this *DHT) processPacket(from *net.UDPAddr, packet []byte) {
 		this.findNodeHandle(from, msg)
 	case common.DHT_NEIGHBORS:
 		this.neighborsHandle(from, msg)
+=======
+		this.pingHandle(from, packet)
+	case common.DHT_PONG:
+		this.pongHandle(from, packet)
+	case common.DHT_FIND_NODE:
+		this.findNodeHandle(from, packet)
+	case common.DHT_NEIGHBORS:
+		this.neighborsHandle(from, packet)
+>>>>>>> clean dht network message
 	default:
 		log.Infof("processPacket: unknown msg %s", msgType)
 	}

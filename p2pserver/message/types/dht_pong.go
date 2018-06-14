@@ -35,12 +35,17 @@ type DHTPong struct {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 func (this *DHTPong) CmdType() string {
 	return common.DHT_PONG
 =======
 type DHTPong struct {
 	P DHTPongPayload
 >>>>>>> fix bug after rebase
+=======
+func (this *DHTPong) CmdType() string {
+	return common.DHT_PONG
+>>>>>>> clean dht network message
 }
 
 //Serialize message
@@ -110,10 +115,14 @@ func (this *DHTPong) Deserialization(p []byte) error {
 	buf := bytes.NewBuffer(p)
 	var err error
 <<<<<<< HEAD
+<<<<<<< HEAD
 	this.Version, err = serialization.ReadUint16(buf)
 =======
 	this.P.Version, err = serialization.ReadUint16(buf)
 >>>>>>> fix bug after rebase
+=======
+	this.Version, err = serialization.ReadUint16(buf)
+>>>>>>> clean dht network message
 	if err != nil {
 		log.Errorf("failed to deserialize pong version %v", err)
 		return err

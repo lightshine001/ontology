@@ -25,19 +25,24 @@ import (
 
 	"github.com/ontio/ontology/common/log"
 <<<<<<< HEAD
+<<<<<<< HEAD
 	"github.com/ontio/ontology/p2pserver/common"
 	"github.com/ontio/ontology/p2pserver/dht/types"
 )
 
 =======
+=======
+	"github.com/ontio/ontology/p2pserver/common"
+>>>>>>> clean dht network message
 	"github.com/ontio/ontology/p2pserver/dht/types"
 )
 
-type FindNodePayload struct {
+type FindNode struct {
 	FromID   types.NodeID
 	TargetID types.NodeID
 }
 
+<<<<<<< HEAD
 >>>>>>> add msg pack for ping/pong, findnode/neighbors
 type FindNode struct {
 <<<<<<< HEAD
@@ -50,14 +55,28 @@ func (this *FindNode) CmdType() string {
 =======
 	P FindNodePayload
 >>>>>>> fix bug after rebase
+=======
+func (this *FindNode) CmdType() string {
+	return common.DHT_FIND_NODE
+>>>>>>> clean dht network message
 }
 
 //Serialize message payload
 func (this FindNode) Serialization() ([]byte, error) {
 	p := bytes.NewBuffer([]byte{})
 	err := binary.Write(p, binary.LittleEndian, this.FromID)
+<<<<<<< HEAD
 	if err != nil {
 		log.Error("failed to write DHT findnode from id failed")
+=======
+	if err != nil {
+		log.Error("failed to write DHT findnode from id failed")
+		return nil, err
+	}
+	err = binary.Write(p, binary.LittleEndian, this.TargetID)
+	if err != nil {
+		log.Error("failed to write DHT findnode target id failed")
+>>>>>>> clean dht network message
 		return nil, err
 	}
 <<<<<<< HEAD
@@ -77,15 +96,21 @@ func (this *FindNode) Deserialization(p []byte) error {
 	buf := bytes.NewBuffer(p)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> clean dht network message
 	err := binary.Read(buf, binary.LittleEndian, &this.FromID)
 	if err != nil {
 		log.Error("Parse DHT findnode message error", err)
 		return errors.New("Parse DHT findnode from id message error")
 	}
 	err = binary.Read(buf, binary.LittleEndian, &this.TargetID)
+<<<<<<< HEAD
 =======
 	err := binary.Read(buf, binary.LittleEndian, &this.P)
 >>>>>>> fix bug after rebase
+=======
+>>>>>>> clean dht network message
 	if err != nil {
 		log.Error("Parse DHT findnode message error", err)
 		return errors.New("Parse DHT findnode target id message error")

@@ -34,12 +34,17 @@ type Neighbors struct {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 func (this *Neighbors) CmdType() string {
 	return common.DHT_NEIGHBORS
 =======
 type Neighbors struct {
 	P   NeighborsPayload
 >>>>>>> fix bug after rebase
+=======
+func (this *Neighbors) CmdType() string {
+	return common.DHT_NEIGHBORS
+>>>>>>> clean dht network message
 }
 
 //Serialize message payload

@@ -29,7 +29,6 @@ import (
 	scom "github.com/ontio/ontology/core/store/common"
 	"github.com/ontio/ontology/core/store/leveldbstore"
 	"github.com/ontio/ontology/smartcontract/event"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 //Saving event notifies gen by smart contract execution
@@ -94,9 +93,6 @@ func (this *EventStore) GetEventNotifyByTx(txHash common.Uint256) (*event.Execut
 	key := this.getEventNotifyByTxKey(txHash)
 	data, err := this.store.Get(key)
 	if err != nil {
-		if err == leveldb.ErrNotFound {
-			return nil, nil
-		}
 		return nil, err
 	}
 	var notify event.ExecuteNotify
@@ -106,17 +102,14 @@ func (this *EventStore) GetEventNotifyByTx(txHash common.Uint256) (*event.Execut
 	return &notify, nil
 }
 
-//GetEventNotifyByBlock return transaction hash which have event notify
-func (this *EventStore) GetEventNotifyByBlock(height uint32) ([]common.Uint256, error) {
+//GetEventNotifyByBlock return all event notify of transaction in block
+func (this *EventStore) GetEventNotifyByBlock(height uint32) ([]*event.ExecuteNotify, error) {
 	key, err := this.getEventNotifyByBlockKey(height)
 	if err != nil {
 		return nil, err
 	}
 	data, err := this.store.Get(key)
 	if err != nil {
-		if err == leveldb.ErrNotFound {
-			return nil, nil
-		}
 		return nil, err
 	}
 	reader := bytes.NewBuffer(data)
@@ -124,16 +117,20 @@ func (this *EventStore) GetEventNotifyByBlock(height uint32) ([]common.Uint256, 
 	if err != nil {
 		return nil, fmt.Errorf("ReadUint32 error %s", err)
 	}
-	txHashs := make([]common.Uint256, 0, size)
+	evtNotifies := make([]*event.ExecuteNotify, 0)
 	for i := uint32(0); i < size; i++ {
 		var txHash common.Uint256
 		err = txHash.Deserialize(reader)
 		if err != nil {
 			return nil, fmt.Errorf("txHash.Deserialize error %s", err)
 		}
-		txHashs = append(txHashs, txHash)
+		evtNotify, err := this.GetEventNotifyByTx(txHash)
+		if err != nil {
+			return nil, fmt.Errorf("getEventNotifyByTx by txhash:%x error:%s", txHash, err)
+		}
+		evtNotifies = append(evtNotifies, evtNotify)
 	}
-	return txHashs, nil
+	return evtNotifies, nil
 }
 
 //CommitTo event store batch to store
@@ -173,9 +170,6 @@ func (this *EventStore) GetCurrentBlock() (common.Uint256, uint32, error) {
 	key := this.getCurrentBlockKey()
 	data, err := this.store.Get(key)
 	if err != nil {
-		if err == leveldb.ErrNotFound {
-			return common.Uint256{}, 0, nil
-		}
 		return common.Uint256{}, 0, err
 	}
 	reader := bytes.NewReader(data)

@@ -22,18 +22,13 @@ import (
 	"bytes"
 	"math/big"
 
+	"github.com/ontio/ontology/common/constants"
 	scommon "github.com/ontio/ontology/core/store/common"
 	"github.com/ontio/ontology/errors"
 	"github.com/ontio/ontology/smartcontract/service/native"
 	"github.com/ontio/ontology/smartcontract/service/native/ont"
 	"github.com/ontio/ontology/smartcontract/service/native/utils"
-)
-
-var (
-	ONG_NAME         = "ONG Token"
-	ONG_SYMBOL       = "ONG"
-	ONG_DECIMALS     = 9
-	ONG_TOTAL_SUPPLY = uint64(1000000000000000000)
+	"github.com/ontio/ontology/vm/neovm/types"
 )
 
 func InitOng() {
@@ -55,7 +50,7 @@ func RegisterOngContract(native *native.NativeService) {
 
 func OngInit(native *native.NativeService) ([]byte, error) {
 	contract := native.ContextRef.CurrentContext().ContractAddress
-	amount, err := utils.GetStorageUInt64(native, ont.GetTotalSupplyKey(contract))
+	amount, err := utils.GetStorageUInt64(native, ont.GenTotalSupplyKey(contract))
 	if err != nil {
 		return utils.BYTE_FALSE, err
 	}
@@ -63,8 +58,11 @@ func OngInit(native *native.NativeService) ([]byte, error) {
 	if amount > 0 {
 		return utils.BYTE_FALSE, errors.NewErr("Init ong has been completed!")
 	}
-	native.CloneCache.Add(scommon.ST_STORAGE, append(contract[:], getOntContext()...), utils.GetUInt64StorageItem(ONG_TOTAL_SUPPLY))
-	ont.AddNotifications(native, contract, &ont.State{To: utils.OntContractAddress, Value: ONG_TOTAL_SUPPLY})
+
+	item := utils.GenUInt64StorageItem(constants.ONG_TOTAL_SUPPLY)
+	native.CloneCache.Add(scommon.ST_STORAGE, ont.GenTotalSupplyKey(contract), item)
+	native.CloneCache.Add(scommon.ST_STORAGE, append(contract[:], utils.OntContractAddress[:]...), item)
+	ont.AddNotifications(native, contract, &ont.State{To: utils.OntContractAddress, Value: constants.ONG_TOTAL_SUPPLY})
 	return utils.BYTE_TRUE, nil
 }
 
@@ -94,11 +92,11 @@ func OngApprove(native *native.NativeService) ([]byte, error) {
 	if state.Value == 0 {
 		return utils.BYTE_FALSE, nil
 	}
-	if err := ont.IsApproveValid(native, state); err != nil {
-		return utils.BYTE_FALSE, err
+	if native.ContextRef.CheckWitness(state.From) == false {
+		return utils.BYTE_FALSE, errors.NewErr("authentication failed!")
 	}
 	contract := native.ContextRef.CurrentContext().ContractAddress
-	native.CloneCache.Add(scommon.ST_STORAGE, ont.GetApproveKey(contract, state.From, state.To), utils.GetUInt64StorageItem(state.Value))
+	native.CloneCache.Add(scommon.ST_STORAGE, ont.GenApproveKey(contract, state.From, state.To), utils.GenUInt64StorageItem(state.Value))
 	return utils.BYTE_TRUE, nil
 }
 
@@ -111,7 +109,7 @@ func OngTransferFrom(native *native.NativeService) ([]byte, error) {
 		return utils.BYTE_FALSE, nil
 	}
 	contract := native.ContextRef.CurrentContext().ContractAddress
-	if err := ont.TransferedFrom(native, contract, state); err != nil {
+	if _, _, err := ont.TransferedFrom(native, contract, state); err != nil {
 		return utils.BYTE_FALSE, err
 	}
 	ont.AddNotifications(native, contract, &ont.State{From: state.From, To: state.To, Value: state.Value})
@@ -119,24 +117,24 @@ func OngTransferFrom(native *native.NativeService) ([]byte, error) {
 }
 
 func OngName(native *native.NativeService) ([]byte, error) {
-	return []byte(ONG_NAME), nil
+	return []byte(constants.ONG_NAME), nil
 }
 
 func OngDecimals(native *native.NativeService) ([]byte, error) {
-	return big.NewInt(int64(ONG_DECIMALS)).Bytes(), nil
+	return big.NewInt(int64(constants.ONG_DECIMALS)).Bytes(), nil
 }
 
 func OngSymbol(native *native.NativeService) ([]byte, error) {
-	return []byte(ONG_SYMBOL), nil
+	return []byte(constants.ONG_SYMBOL), nil
 }
 
 func OngTotalSupply(native *native.NativeService) ([]byte, error) {
 	contract := native.ContextRef.CurrentContext().ContractAddress
-	amount, err := utils.GetStorageUInt64(native, ont.GetTotalSupplyKey(contract))
+	amount, err := utils.GetStorageUInt64(native, ont.GenTotalSupplyKey(contract))
 	if err != nil {
 		return utils.BYTE_FALSE, errors.NewDetailErr(err, errors.ErrNoCode, "[OntTotalSupply] get totalSupply error!")
 	}
-	return big.NewInt(int64(amount)).Bytes(), nil
+	return types.BigIntToBytes(big.NewInt(int64(amount))), nil
 }
 
 func OngBalanceOf(native *native.NativeService) ([]byte, error) {
@@ -145,8 +143,4 @@ func OngBalanceOf(native *native.NativeService) ([]byte, error) {
 
 func OngAllowance(native *native.NativeService) ([]byte, error) {
 	return ont.GetBalanceValue(native, ont.APPROVE_FLAG)
-}
-
-func getOntContext() []byte {
-	return utils.OntContractAddress[:]
 }

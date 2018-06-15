@@ -15,25 +15,39 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with The ontology.  If not, see <http://www.gnu.org/licenses/>.
  */
-package wasmvm
+package auth
 
-import (
-	"github.com/ontio/ontology/smartcontract/types"
-	"strings"
-	"testing"
-)
+import "testing"
 
-func TestWasmVmService_GetContractCodeFromAddress(t *testing.T) {
-	code := "0061736d01000000010c0260027f7f017f60017f017f03030200010710020361646400000673717561726500010a11020700200120006a0b0700200020006c0b"
-	address := GetContractAddress(code, types.WASMVM)
-
-	if len(address[:]) != 20 {
-		t.Error("TestWasmVmService_GetContractCodeFromAddress get address failed")
+//{"a", "b"} == {"b", "a"}
+func testEq(a, b []string) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
 	}
 
-	hexaddr := address.ToHexString()
-
-	if strings.Index(hexaddr, "9") != 0 {
-		t.Error("TestWasmVmService_GetContractCodeFromAddress is not a wasm contract address")
+	if len(a) != len(b) {
+		return false
+	}
+	Map := make(map[string]bool)
+	for i := range a {
+		Map[a[i]] = true
+	}
+	for _, s := range b {
+		_, ok := Map[s]
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+func TestStringSliceUniq(t *testing.T) {
+	s := []string{"foo", "foo1", "foo2", "foo", "foo1", "foo2", "foo3"}
+	ret := stringSliceUniq(s)
+	t.Log(ret)
+	if !testEq(ret, []string{"foo", "foo1", "foo2", "foo3"}) {
+		t.Fatalf("failed")
 	}
 }

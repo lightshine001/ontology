@@ -21,9 +21,12 @@ package p2pserver
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"io/ioutil"
 	"math/rand"
 	"net"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -57,12 +60,13 @@ type P2PServer struct {
 	blockSync *BlockSyncMgr
 	ledger    *ledger.Ledger
 	ReconnectAddrs
-	quitOnline    chan bool
-	quitHeartBeat chan bool
-	dht           *dht.DHT
+	recentPeers    []string
+	quitSyncRecent chan bool
+	quitOnline     chan bool
+	quitHeartBeat  chan bool
+	dht            *dht.DHT
 	//quitSyncBlk   chan bool
 	//isSync        bool
-
 }
 
 //ReconnectAddrs contain addr need to reconnect
@@ -130,6 +134,8 @@ func (this *P2PServer) Start() error {
 	} else {
 		return errors.New("p2p msg router invalid")
 	}
+	this.tryRecentPeers()
+	go this.syncUpRecentPeers()
 	go this.keepOnlineService()
 	go this.heartBeatService()
 	go this.blockSync.Start()
@@ -153,6 +159,7 @@ func (this *P2PServer) DisplayDHT() {
 //Stop halt all service by send signal to channels
 func (this *P2PServer) Stop() {
 	this.network.Halt()
+	this.quitSyncRecent <- true
 	this.quitOnline <- true
 	this.quitHeartBeat <- true
 	this.msgRouter.Stop()
@@ -182,39 +189,24 @@ func (this *P2PServer) GetNeighborAddrs() []common.PeerAddr {
 //Xmit called by other module to broadcast msg
 func (this *P2PServer) Xmit(message interface{}) error {
 	log.Debug()
-	var buffer []byte
-	var err error
+	var msg msgtypes.Message
 	var msgHash comm.Uint256
 	isConsensus := false
 	switch message.(type) {
 	case *types.Transaction:
 		log.Debug("TX transaction message")
 		txn := message.(*types.Transaction)
-		buffer, err = msgpack.NewTxn(txn)
-		if err != nil {
-			log.Error("Error New Tx message: ", err)
-			return err
-		}
+		msg = msgpack.NewTxn(txn)
 		msgHash = txn.Hash()
-
 	case *types.Block:
 		log.Debug("TX block message")
 		block := message.(*types.Block)
-		buffer, err = msgpack.NewBlock(block)
-		if err != nil {
-			log.Error("Error New Block message: ", err)
-			return err
-		}
+		msg = msgpack.NewBlock(block)
 		msgHash = block.Hash()
-
 	case *msgtypes.ConsensusPayload:
 		log.Debug("TX consensus message")
 		consensusPayload := message.(*msgtypes.ConsensusPayload)
-		buffer, err = msgpack.NewConsensus(consensusPayload)
-		if err != nil {
-			log.Error("Error New consensus message: ", err)
-			return err
-		}
+		msg = msgpack.NewConsensus(consensusPayload)
 		isConsensus = true
 		msgHash = consensusPayload.Hash()
 
@@ -225,27 +217,22 @@ func (this *P2PServer) Xmit(message interface{}) error {
 		hash.Serialize(buf)
 		// construct inv message
 		invPayload := msgpack.NewInvPayload(comm.BLOCK, 1, buf.Bytes())
-		buffer, err = msgpack.NewInv(invPayload)
-		if err != nil {
-			log.Error("Error New inv message")
-			return err
-		}
+		msg = msgpack.NewInv(invPayload)
 		msgHash = hash
-
 	default:
 		log.Warnf("Unknown Xmit message %v , type %v", message,
 			reflect.TypeOf(message))
 		return errors.New("Unknown Xmit message type")
 	}
-	this.network.Xmit(buffer, msgHash, isConsensus)
+	this.network.Xmit(msg, msgHash, isConsensus)
 	return nil
 }
 
 //Send tranfer buffer to peer
-func (this *P2PServer) Send(p *peer.Peer, buf []byte,
+func (this *P2PServer) Send(p *peer.Peer, msg msgtypes.Message,
 	isConsensus bool) error {
 	if this.network.IsPeerEstablished(p) {
-		return this.network.Send(p, buf, isConsensus)
+		return this.network.Send(p, msg, isConsensus)
 	}
 	log.Errorf("P2PServer send to a not ESTABLISH peer 0x%x",
 		p.GetID())
@@ -442,8 +429,8 @@ func (this *P2PServer) keepOnlineService() {
 
 //reqNbrList ask the peer for its neighbor list
 func (this *P2PServer) reqNbrList(p *peer.Peer) {
-	buf, _ := msgpack.NewAddrReq()
-	go this.Send(p, buf, false)
+	msg := msgpack.NewAddrReq()
+	go this.Send(p, msg, false)
 }
 
 //heartBeat send ping to nbr peers and check the timeout
@@ -470,12 +457,8 @@ func (this *P2PServer) ping() {
 	for _, p := range peers {
 		if p.GetSyncState() == common.ESTABLISH {
 			height := this.ledger.GetCurrentBlockHeight()
-			buf, err := msgpack.NewPingMsg(uint64(height))
-			if err != nil {
-				log.Error("failed build a new ping message")
-			} else {
-				go this.Send(p, buf, false)
-			}
+			ping := msgpack.NewPingMsg(uint64(height))
+			go this.Send(p, ping, false)
 		}
 	}
 }
@@ -521,4 +504,107 @@ func (this *P2PServer) removeFromRetryList(addr string) {
 			delete(this.RetryAddrs, addr)
 		}
 	}
+}
+
+//tryRecentPeers try connect recent contact peer when service start
+func (this *P2PServer) tryRecentPeers() {
+	if fileExist(common.RECENT_FILE_NAME) {
+		buf, err := ioutil.ReadFile(common.RECENT_FILE_NAME)
+		if err != nil {
+			log.Error("read %s fail:%s, connect recent peers cancel", common.RECENT_FILE_NAME, err.Error())
+			return
+		}
+
+		err = json.Unmarshal(buf, &this.recentPeers)
+		if err != nil {
+			log.Error("parse recent peer file fail: ", err)
+			return
+		}
+		if len(this.recentPeers) > 0 {
+			log.Info("try to connect recent peer")
+		}
+		for _, v := range this.recentPeers {
+			go this.network.Connect(v, false)
+		}
+
+	}
+}
+
+//syncUpRecentPeers sync up recent peers periodically
+func (this *P2PServer) syncUpRecentPeers() {
+	periodTime := common.RECENT_TIMEOUT
+	t := time.NewTicker(time.Second * (time.Duration(periodTime)))
+	for {
+		select {
+		case <-t.C:
+			this.syncPeerAddr()
+		case <-this.quitSyncRecent:
+			t.Stop()
+			break
+		}
+	}
+}
+
+//syncPeerAddr compare snapshot of recent peer with current link,then persist the list
+func (this *P2PServer) syncPeerAddr() {
+	changed := false
+	for i := 0; i < len(this.recentPeers); i++ {
+		p := this.network.GetPeerFromAddr(this.recentPeers[i])
+		if p == nil || (p != nil && p.GetSyncState() != common.ESTABLISH) {
+			this.recentPeers = append(this.recentPeers[:i], this.recentPeers[i+1:]...)
+			changed = true
+			i--
+		}
+	}
+	left := common.RECENT_LIMIT - len(this.recentPeers)
+	if left > 0 {
+		np := this.network.GetNp()
+		np.Lock()
+		var ip net.IP
+		for _, p := range np.List {
+			addr, _ := p.GetAddr16()
+			ip = addr[:]
+			nodeAddr := ip.To16().String() + ":" +
+				strconv.Itoa(int(p.GetSyncPort()))
+			found := false
+			for i := 0; i < len(this.recentPeers); i++ {
+				if nodeAddr == this.recentPeers[i] {
+					found = true
+					break
+				}
+			}
+			if !found {
+				this.recentPeers = append(this.recentPeers, nodeAddr)
+				left--
+				changed = true
+				if left == 0 {
+					break
+				}
+			}
+		}
+		np.Unlock()
+	}
+	if changed {
+		buf, err := json.Marshal(this.recentPeers)
+		if err != nil {
+			log.Error("package recent peer fail: ", err)
+			return
+		}
+		err = ioutil.WriteFile(common.RECENT_FILE_NAME, buf, os.ModePerm)
+		if err != nil {
+			log.Error("write recent peer fail: ", err)
+		}
+	}
+}
+
+//fileExist check file exist status
+func fileExist(path string) bool {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	return false
 }

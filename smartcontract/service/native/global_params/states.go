@@ -21,62 +21,99 @@ package global_params
 import (
 	"io"
 
-	"encoding/json"
-
 	"fmt"
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/serialization"
 	"github.com/ontio/ontology/errors"
+	"github.com/ontio/ontology/smartcontract/service/native/utils"
 )
 
-type Params map[string]string
+type Param struct {
+	Key   string
+	Value string
+}
 
-type Admin common.Address
+type Params []*Param
+
+type Role common.Address
 
 type ParamNameList []string
 
-func (params *Params) Serialize(w io.Writer) error {
-	paramsJsonString, err := json.Marshal(params)
-	if err != nil {
-		return errors.NewDetailErr(err, errors.ErrNoCode, "param config, serialize params error!")
+func (params *Params) SetParam(value *Param) {
+	for index, param := range *params {
+		if param.Key == value.Key {
+			(*params)[index] = value
+			return
+		}
 	}
-	if err := serialization.WriteVarBytes(w, paramsJsonString); err != nil {
-		return errors.NewDetailErr(err, errors.ErrNoCode, "param config, serialize params error!")
+	*params = append(*params, value)
+}
+
+func (params *Params) GetParam(key string) (int, *Param) {
+	for index, param := range *params {
+		if param.Key == key {
+			return index, param
+		}
+	}
+	return -1, nil
+}
+
+func (params *Params) Serialize(w io.Writer) error {
+	paramNum := len(*params)
+	if err := utils.WriteVarUint(w, uint64(paramNum)); err != nil {
+		return errors.NewDetailErr(err, errors.ErrNoCode, "param config, serialize params length error!")
+	}
+	for _, param := range *params {
+		if err := serialization.WriteString(w, param.Key); err != nil {
+			return errors.NewDetailErr(err, errors.ErrNoCode, fmt.Sprintf("param config, serialize param key %v error!", param.Key))
+		}
+		if err := serialization.WriteString(w, param.Value); err != nil {
+			return errors.NewDetailErr(err, errors.ErrNoCode, fmt.Sprintf("param config, serialize param value %v error!", param.Value))
+		}
 	}
 	return nil
 }
 
 func (params *Params) Deserialize(r io.Reader) error {
-	paramsJsonString, err := serialization.ReadVarBytes(r)
+	paramNum, err := utils.ReadVarUint(r)
 	if err != nil {
-		return errors.NewDetailErr(err, errors.ErrNoCode, "param config, deserialize params error!")
+		return errors.NewDetailErr(err, errors.ErrNoCode, "param config, deserialize params length error!")
 	}
-	err = json.Unmarshal(paramsJsonString, params)
-	if err != nil {
-		return errors.NewDetailErr(err, errors.ErrNoCode, "param config, deserialize params error!")
+	for i := 0; uint64(i) < paramNum; i++ {
+		param := new(Param)
+		param.Key, err = serialization.ReadString(r)
+		if err != nil {
+			return errors.NewDetailErr(err, errors.ErrNoCode, fmt.Sprintf("param config, deserialize param key %v error!", param.Key))
+		}
+		param.Value, err = serialization.ReadString(r)
+		if err != nil {
+			return errors.NewDetailErr(err, errors.ErrNoCode, fmt.Sprintf("param config, deserialize param value %v error!", param.Value))
+		}
+		*params = append(*params, param)
 	}
 	return nil
 }
 
-func (admin *Admin) Serialize(w io.Writer) error {
-	_, err := w.Write(admin[:])
+func (role *Role) Serialize(w io.Writer) error {
+	err := serialization.WriteVarBytes(w, role[:])
 	if err != nil {
-		return errors.NewDetailErr(err, errors.ErrNoCode, "param config, serialize admin error!")
+		return errors.NewDetailErr(err, errors.ErrNoCode, "param config, serialize role error!")
 	}
 	return nil
 }
 
-func (admin *Admin) Deserialize(r io.Reader) error {
-	n, err := r.Read(admin[:])
-	if n != len(admin[:]) || err != nil {
-		return errors.NewDetailErr(err, errors.ErrNoCode, "param config, deserialize admin error!")
+func (role *Role) Deserialize(r io.Reader) error {
+	address, err := utils.ReadAddress(r)
+	if err != nil {
+		return errors.NewDetailErr(err, errors.ErrNoCode, "param config, deserialize role error!")
 	}
+	copy((*role)[:], address[:])
 	return nil
 }
 
 func (nameList *ParamNameList) Serialize(w io.Writer) error {
 	nameNum := len(*nameList)
-	if err := serialization.WriteVarUint(w, uint64(nameNum)); err != nil {
+	if err := utils.WriteVarUint(w, uint64(nameNum)); err != nil {
 		return errors.NewDetailErr(err, errors.ErrNoCode, "param config, serialize param name list length error!")
 	}
 	for _, value := range *nameList {
@@ -88,7 +125,7 @@ func (nameList *ParamNameList) Serialize(w io.Writer) error {
 }
 
 func (nameList *ParamNameList) Deserialize(r io.Reader) error {
-	nameNum, err := serialization.ReadVarUint(r, 0)
+	nameNum, err := utils.ReadVarUint(r)
 	if err != nil {
 		return errors.NewDetailErr(err, errors.ErrNoCode, "param config, deserialize param name list length error!")
 	}

@@ -25,12 +25,15 @@ import (
 	"strings"
 )
 
+const (
+	DEFAULT_EXPORT_FILE = "./blocks.dat"
+)
+
 var (
 	//Ontology setting
 	ConfigFlag = cli.StringFlag{
 		Name:  "config",
-		Usage: "Use `<filename>` as the genesis config file",
-		Value: config.DEFAULT_CONFIG_FILE_NAME,
+		Usage: "Use `<filename>` as the genesis config file. Using Polaris config with VBFT consensus as default, if not set config flag.",
 	}
 	LogLevelFlag = cli.UintFlag{
 		Name:  "loglevel",
@@ -45,6 +48,24 @@ var (
 		Name:  "wallet,w",
 		Value: config.DEFAULT_WALLET_FILE_NAME,
 		Usage: "Use `<filename>` as the wallet",
+	}
+	ImportEnableFlag = cli.BoolFlag{
+		Name:  "import",
+		Usage: "Import blocks for file",
+	}
+	ImportFileFlag = cli.StringFlag{
+		Name:  "importfile",
+		Usage: "Path of import file",
+		Value: DEFAULT_EXPORT_FILE,
+	}
+	ImportHeightFlag = cli.UintFlag{
+		Name:  "importheight",
+		Usage: "Import target block height, if not specified, import all of blocks in files",
+	}
+	DataDirFlag = cli.StringFlag{
+		Name:  "datadir",
+		Usage: "Using dir `<path>` to save block data",
+		Value: config.DEFAULT_DATA_DIR,
 	}
 
 	//Consensus setting
@@ -80,6 +101,20 @@ var (
 	}
 
 	//P2P setting
+	ReservedPeersOnlyFlag = cli.BoolFlag{
+		Name:  "reservedonly",
+		Usage: "connect reserved peers only",
+	}
+	ReservedPeersFileFlag = cli.StringFlag{
+		Name:  "reservedfile",
+		Usage: "reserved peers file",
+		Value: config.DEFAULT_RESERVED_FILE,
+	}
+	NetworkIdFlag = cli.UintFlag{
+		Name:  "networkid",
+		Usage: "P2P network id. 1=main net, 2=polaris test net, 3=testmode, and other for custom network",
+		Value: config.NETWORK_ID_POLARIS_NET,
+	}
 	NodePortFlag = cli.UintFlag{
 		Name:  "nodeport",
 		Usage: "P2P node listening port",
@@ -191,6 +226,14 @@ var (
 	AccountChangePasswdFlag = cli.BoolFlag{
 		Name:  "changepasswd",
 		Usage: "Change account password",
+	}
+	AccountLowSecurityFlag = cli.BoolFlag{
+		Name:  "low-security",
+		Usage: "Change account to low protection strength for low performance devices",
+	}
+	AccountWIFFlag = cli.BoolFlag{
+		Name:  "wif",
+		Usage: "Import WIF keys from the source file specified by --source option",
 	}
 
 	//SmartContract setting
@@ -321,6 +364,23 @@ var (
 		Name:  "cliport",
 		Usage: "Cli rpc port",
 		Value: config.DEFAULT_CLI_RPC_PORT,
+	}
+
+	//Export setting
+	ExportFileFlag = cli.StringFlag{
+		Name:  "file",
+		Usage: "Path of export file",
+		Value: DEFAULT_EXPORT_FILE,
+	}
+	ExportHeightFlag = cli.UintFlag{
+		Name:  "height",
+		Usage: "End block height to export, if height equal 0, mean export all block in current DB",
+		Value: 0,
+	}
+	ExportSpeedFlag = cli.StringFlag{
+		Name:  "speed",
+		Usage: "Export block speed, <h|m|l>",
+		Value: "m",
 	}
 
 	NonOptionFlag = cli.StringFlag{

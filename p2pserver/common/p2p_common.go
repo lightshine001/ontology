@@ -19,6 +19,9 @@
 package common
 
 import (
+	"errors"
+	"strings"
+
 	"github.com/ontio/ontology/core/types"
 )
 
@@ -30,17 +33,23 @@ const (
 
 //msg cmd const
 const (
-	MSG_CMD_LEN      = 12         //msg type length in byte
-	CMD_OFFSET       = 4          //cmd type offet in msg hdr
-	CHECKSUM_LEN     = 4          //checksum length in byte
-	HASH_LEN         = 32         // hash length in byte
-	MSG_HDR_LEN      = 24         //msg hdr length in byte
-	MAX_BLK_HDR_CNT  = 500        //hdr count once when sync header
-	MAX_INV_HDR_CNT  = 500        //inventory count once when req inv
-	NETMAGIC         = 0x74746e41 //network magic number
-	MAX_REQ_BLK_ONCE = 16         //req blk count once from one peer when sync blk
-	MAX_CACHE_SIZE   = 65536      // Max hash cache
+	MSG_CMD_LEN      = 12               //msg type length in byte
+	CMD_OFFSET       = 4                //cmd type offet in msg hdr
+	CHECKSUM_LEN     = 4                //checksum length in byte
+	HASH_LEN         = 32               // hash length in byte
+	MSG_HDR_LEN      = 24               //msg hdr length in byte
+	MAX_BLK_HDR_CNT  = 500              //hdr count once when sync header
+	MAX_INV_HDR_CNT  = 500              //inventory count once when req inv
+	MAX_REQ_BLK_ONCE = 16               //req blk count once from one peer when sync blk
+	MAX_MSG_LEN      = 30 * 1024 * 1024 //the maximum message length
+	NETMAGIC         = 0x74746e41       //network magic number
+	MAX_CACHE_SIZE   = 65536            // Max hash cache
+	MAX_PAYLOAD_LEN  = MAX_MSG_LEN - MSG_HDR_LEN
+)
 
+//msg type const
+const (
+	MAX_ADDR_NODE_CNT = 128 //the maximum peer address from msg
 )
 
 //info update const
@@ -77,6 +86,13 @@ const (
 	ACTOR_TIMEOUT = 5 //actor request timeout in secs
 )
 
+//recent contact const
+const (
+	RECENT_TIMEOUT   = 60
+	RECENT_FILE_NAME = "peers.recent"
+	RECENT_LIMIT     = 10 //recent contact list limit
+)
+
 //PeerAddr represent peer`s net information
 type PeerAddr struct {
 	Time          int64    //latest timestamp
@@ -85,13 +101,6 @@ type PeerAddr struct {
 	Port          uint16   //sync port
 	ConsensusPort uint16   //consensus port
 	ID            uint64   // Unique ID
-}
-
-//MsgPayload in link channel
-type MsgPayload struct {
-	Id      uint64 //peer ID
-	Addr    string //link address
-	Payload []byte //msg payload
 }
 
 //const channel msg id and type
@@ -112,6 +121,10 @@ const (
 	GET_BLOCKS_TYPE  = "getblocks"  //req blks from peer
 	NOT_FOUND_TYPE   = "notfound"   //peer can`t find blk according to the hash
 	DISCONNECT_TYPE  = "disconnect" //peer disconnect info raise by link
+	DHT_PING         = "dht_ping"
+	DHT_PONG         = "dht_pong"
+	DHT_FIND_NODE    = "find_node" // length cannot exceed common.MSG_CMD_LEN
+	DHT_NEIGHBORS    = "neighbors" // length cannot exceed common.MSG_CMD_LEN
 )
 
 type AppendPeerID struct {
@@ -128,4 +141,13 @@ type AppendHeaders struct {
 
 type AppendBlock struct {
 	Block *types.Block // Block to be added to the ledger
+}
+
+//ParseIPAddr return ip address
+func ParseIPAddr(s string) (string, error) {
+	i := strings.Index(s, ":")
+	if i < 0 {
+		return s, errors.New("split ip address error")
+	}
+	return s[:i], nil
 }

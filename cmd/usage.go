@@ -78,6 +78,10 @@ var AppHelpFlagGroups = []flagGroup{
 			utils.ConfigFlag,
 			utils.LogLevelFlag,
 			utils.DisableEventLogFlag,
+			utils.DataDirFlag,
+			utils.ImportEnableFlag,
+			utils.ImportHeightFlag,
+			utils.ImportFileFlag,
 		},
 	},
 	{
@@ -96,6 +100,8 @@ var AppHelpFlagGroups = []flagGroup{
 			utils.AccountQuantityFlag,
 			utils.AccountChangePasswdFlag,
 			utils.AccountSourceFileFlag,
+			utils.AccountWIFFlag,
+			utils.AccountLowSecurityFlag,
 		},
 	},
 	{
@@ -115,6 +121,9 @@ var AppHelpFlagGroups = []flagGroup{
 	{
 		Name: "P2P NODE",
 		Flags: []cli.Flag{
+			utils.ReservedPeersOnlyFlag,
+			utils.ReservedPeersFileFlag,
+			utils.NetworkIdFlag,
 			utils.NodePortFlag,
 			utils.DualPortSupportFlag,
 			utils.ConsensusPortFlag,
@@ -172,6 +181,14 @@ var AppHelpFlagGroups = []flagGroup{
 		Flags: []cli.Flag{
 			utils.ApproveAssetFromFlag,
 			utils.ApproveAssetToFlag,
+		},
+	},
+	{
+		Name: "EXPORT",
+		Flags: []cli.Flag{
+			utils.ExportFileFlag,
+			utils.ExportSpeedFlag,
+			utils.ExportHeightFlag,
 		},
 	},
 	{

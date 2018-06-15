@@ -193,6 +193,8 @@ func (self *WsServer) registryMethod() {
 		"getblocktxsbyheight":       {handler: rest.GetBlockTxsByHeight},
 		"getgasprice":               {handler: rest.GetGasPrice},
 		"getunclaimong":             {handler: rest.GetUnclaimOng},
+		"getmempooltxcount":         {handler: rest.GetMemPoolTxCount},
+		"getmempooltxstate":         {handler: rest.GetMemPoolTxState},
 
 		"getsessioncount": {handler: getsessioncount},
 	}
@@ -202,7 +204,7 @@ func (self *WsServer) registryMethod() {
 func (self *WsServer) Stop() {
 	if self.server != nil {
 		self.server.Shutdown(context.Background())
-		log.Error("Close websocket ")
+		log.Infof("Close websocket ")
 	}
 }
 func (self *WsServer) Restart() {
@@ -272,7 +274,7 @@ func (self *WsServer) webSocketHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		e, ok := err.(net.Error)
 		if !ok || !e.Timeout() {
-			log.Error("websocket conn:", err)
+			log.Infof("websocket conn:", err)
 			return
 		}
 	}
@@ -296,7 +298,7 @@ func (self *WsServer) OnDataHandle(curSession *session.Session, bysMsg []byte, r
 	if err := json.Unmarshal(bysMsg, &req); err != nil {
 		resp := rest.ResponsePack(Err.ILLEGAL_DATAFORMAT)
 		curSession.Send(marshalResp(resp))
-		log.Error("websocket OnDataHandle:", err)
+		log.Infof("websocket OnDataHandle:", err)
 		return false
 	}
 	actionName, ok := req["Action"].(string)
@@ -370,7 +372,7 @@ func marshalResp(resp map[string]interface{}) []byte {
 	resp["Desc"] = Err.ErrMap[resp["Error"].(int64)]
 	data, err := json.Marshal(resp)
 	if err != nil {
-		log.Error("Websocket marshal json error:", err)
+		log.Infof("Websocket marshal json error:", err)
 		return nil
 	}
 

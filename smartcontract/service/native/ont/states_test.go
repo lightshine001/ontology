@@ -15,31 +15,32 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with The ontology.  If not, see <http://www.gnu.org/licenses/>.
  */
-package types
+
+package ont
 
 import (
+	"bytes"
 	"testing"
+
+	"github.com/magiconair/properties/assert"
+	"github.com/ontio/ontology/core/types"
 )
 
-func TestMsgHdrSerializationDeserialization(t *testing.T) {
-	var msg MsgHdr
-	var sum []byte
-	sum = []byte{0x5d, 0xf6, 0xe0, 0xe2}
-	msg.Init("hdrtest", sum, 0)
-
-	buf, err := msg.Serialization()
-	if err != nil {
-		return
+func TestState_Serialize(t *testing.T) {
+	state := State{
+		From:  types.AddressFromVmCode([]byte{1, 2, 3}),
+		To:    types.AddressFromVmCode([]byte{4, 5, 6}),
+		Value: 1,
+	}
+	bf := new(bytes.Buffer)
+	if err := state.Serialize(bf); err != nil {
+		t.Fatal("state serialize fail!")
 	}
 
-	var demsg MsgHdr
-	err = demsg.Deserialization(buf)
-	if err != nil {
-		t.Error(err)
-		return
-	} else {
-		t.Log("Message Header Test_Deserialization sucessful")
+	state2 := State{}
+	if err := state2.Deserialize(bf); err != nil {
+		t.Fatal("state deserialize fail!")
 	}
-	t.Log("cmd is ", msg.CMD)
 
+	assert.Equal(t, state, state2)
 }

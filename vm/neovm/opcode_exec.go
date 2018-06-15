@@ -127,6 +127,7 @@ var (
 		SHA256:  {Opcode: SHA256, Name: "SHA256", Exec: opHash, Validator: validateCount1},
 		HASH160: {Opcode: HASH160, Name: "HASH160", Exec: opHash, Validator: validateCount1},
 		HASH256: {Opcode: HASH256, Name: "HASH256", Exec: opHash, Validator: validateCount1},
+		VERIFY:  {Opcode: VERIFY, Name: "VERIFY"},
 		//CHECKSIG:      {Opcode: CHECKSIG, Name: "CHECKSIG", Exec: opCheckSig, Validator: validateCount2},
 		//CHECKMULTISIG: {Opcode: CHECKMULTISIG, Name: "CHECKMULTISIG", Exec: opCheckMultiSig, Validator: validateCount2},
 
@@ -137,6 +138,7 @@ var (
 		PICKITEM:  {Opcode: PICKITEM, Name: "PICKITEM", Exec: opPickItem, Validator: validatePickItem},
 		SETITEM:   {Opcode: SETITEM, Name: "SETITEM", Exec: opSetItem, Validator: validatorSetItem},
 		NEWARRAY:  {Opcode: NEWARRAY, Name: "NEWARRAY", Exec: opNewArray, Validator: validateNewArray},
+		NEWMAP:    {Opcode: NEWMAP, Name: "NEWMAP", Exec: opNewMap},
 		NEWSTRUCT: {Opcode: NEWSTRUCT, Name: "NEWSTRUCT", Exec: opNewStruct, Validator: validateNewStruct},
 		APPEND:    {Opcode: APPEND, Name: "APPEND", Exec: opAppend, Validator: validateAppend},
 		REVERSE:   {Opcode: REVERSE, Name: "REVERSE", Exec: opReverse, Validator: validatorReverse},

@@ -20,11 +20,13 @@ package vconfig
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
 	"time"
 
+	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/serialization"
 )
 
@@ -34,7 +36,7 @@ var (
 
 type PeerConfig struct {
 	Index uint32 `json:"index"`
-	ID    NodeID `json:"id"`
+	ID    string `json:"id"`
 }
 
 type ChainConfig struct {
@@ -50,8 +52,13 @@ type ChainConfig struct {
 	MaxBlockChangeView   uint32        `json:"MaxBlockChangeView"`
 }
 
+//
+// VBFT consensus payload, stored on each block header
+//
 type VbftBlockInfo struct {
 	Proposer           uint32       `json:"leader"`
+	VrfValue           []byte       `json:"vrf_value"`
+	VrfProof           []byte       `json:"vrf_proof"`
 	LastConfigBlockNum uint32       `json:"last_config_block_num"`
 	NewChainConfig     *ChainConfig `json:"new_chain_config"`
 }
@@ -99,7 +106,7 @@ func (cc *ChainConfig) Serialize(w io.Writer) error {
 
 func (cc *ChainConfig) Deserialize(r io.Reader, length int) error {
 	buf := make([]byte, length)
-	if _, err := r.Read(buf[:]); err != nil {
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
 		return err
 	}
 	if err := json.Unmarshal(buf[:], &cc); err != nil {
@@ -112,7 +119,7 @@ func (pc *PeerConfig) Serialize(w io.Writer) error {
 	if err := serialization.WriteUint32(w, pc.Index); err != nil {
 		return fmt.Errorf("ChainConfig peer index length serialization failed %s", err)
 	}
-	if err := serialization.WriteString(w, pc.ID.String()); err != nil {
+	if err := serialization.WriteString(w, pc.ID); err != nil {
 		return fmt.Errorf("ChainConfig peer ID length serialization failed %s", err)
 	}
 	return nil
@@ -122,8 +129,14 @@ func (pc *PeerConfig) Deserialize(r io.Reader) error {
 	index, _ := serialization.ReadUint32(r)
 	pc.Index = index
 
-	nodeinfo, _ := serialization.ReadString(r)
-	nodeid, _ := StringID(nodeinfo)
+	nodeid, _ := serialization.ReadString(r)
 	pc.ID = nodeid
 	return nil
+}
+
+func (cc *ChainConfig) Hash() common.Uint256 {
+	buf := new(bytes.Buffer)
+	cc.Serialize(buf)
+	hash := sha256.Sum256(buf.Bytes())
+	return hash
 }

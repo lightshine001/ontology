@@ -26,6 +26,8 @@ Restful Api List
 | get_gasprice | GET /api/v1/gasprice|
 | get_allowance | GET /api/v1/allowance/:asset/:from/:to |
 | get_unclaimong | GET /api/v1/unclaimong/:addr |
+| get_mempooltxcount | GET /api/v1/mempool/txcount |
+| get_mempooltxstate | GET /api/v1/mempool/txstate/:hash |
 | post_raw_tx | post /api/v1/transaction?preExec=0 |
 
 
@@ -595,7 +597,7 @@ curl -i http://server:port/api/v1/contract/fff49c809d302a2956e9dc0012619a452d4b8
 #### 13 get_smtcode_evt_txs
 
 get smart contract event txhash list by height
-Get a list of transaction hash with smartevent based on height
+Get a list of transaction with smartecontract event based on height
 
 GET
 
@@ -616,7 +618,38 @@ curl -i http://localhost:20334/api/v1/smartcode/event/transactions/900
     "Desc": "SUCCESS",
     "Error": 0,
     "Result": [
-        "592d83c739d9d167b74b385161fee09bfe820eae5bc4a69411f8e00f4847b833"
+               {
+                    "TxHash": "7e8c19fdd4f9ba67f95659833e336eac37116f74ea8bf7be4541ada05b13503e",
+                    "State": 1,
+                    "GasConsumed": 0,
+                    "Notify": [
+                        {
+                            "ContractAddress": "0200000000000000000000000000000000000000",
+                            "States": [
+                                "transfer",
+                                "AFmseVrdL9f9oyCzZefL9tG6UbvhPbdYzM",
+                                "AFmseVrdL9f9oyCzZefL9tG6UbvhUMqNMV",
+                                1000000000000000000
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "TxHash": "fc82cd363271729367098fbabcfd0c02cf6ded1e535700d04658b596d53cf07d",
+                    "State": 1,
+                    "GasConsumed": 0,
+                    "Notify": [
+                        {
+                            "ContractAddress": "0200000000000000000000000000000000000000",
+                            "States": [
+                                "transfer",
+                                "AFmseVrdL9f9oyCzZefL9tG6UbvhPbdYzM",
+                                "AFmseVrdL9f9oyCzZefL9tG6UbvhUMqNMV",
+                                1000000000000000000
+                            ]
+                        }
+                    ]
+                }
     ],
     "Version": "1.0.0"
 }
@@ -798,6 +831,64 @@ curl -i http://localhost:20334/api/v1/unclaimong/:addr
     "Version": "1.0.0"
 }
 ```
+
+### 19 get_mempooltxstate
+
+Query the transaction state in the memory pool.
+
+GET
+```
+/api/v1/mempool/txstate/:hash
+```
+#### Request Example:
+```
+curl -i http://localhost:20334/api/v1/mempool/txstate/:hash
+```
+#### Response
+```
+{
+    "Action": "getmempooltxstate",
+    "Desc": "SUCCESS",
+    "Error": 0,
+    "Version": "1.0.0",
+    "Result": {
+              	"State": [{
+              		"Type": 1,
+              		"Height": 342,
+              		"ErrCode": 0
+              	}, {
+              		"Type": 0,
+              		"Height": 0,
+              		"ErrCode": 0
+              	}]
+    }
+}
+```
+
+
+### 20 get_mempooltxcount
+
+Query the transaction count in the memory pool.
+
+GET
+```
+/api/v1/mempool/txcount
+```
+#### Request Example:
+```
+curl -i http://localhost:20334/api/v1/mempool/txcount
+```
+#### Response
+```
+{
+    "Action": "getmempooltxcount",
+    "Desc": "SUCCESS",
+    "Error": 0,
+    "Version": "1.0.0",
+    "Result": [100,50]
+}
+```
+
 
 ## Error Code
 

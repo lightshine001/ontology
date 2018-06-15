@@ -129,6 +129,7 @@ const (
 	HASH160       OpCode = 0xA9
 	HASH256       OpCode = 0xAA
 	CHECKSIG      OpCode = 0xAC // The entire transaction's outputs inputs and script (from the most recently-executed CODESEPARATOR to the end) are hashed. The signature used by CHECKSIG must be a valid signature for this hash and public key. If it is 1 is returned 0 otherwise.
+	VERIFY        OpCode = 0xAD
 	CHECKMULTISIG OpCode = 0xAE // For each signature and public key pair CHECKSIG is executed. If more public keys than signatures are listed some key/sig pairs can fail. All signatures need to match a public key. If all signatures are valid 1 is returned 0 otherwise. Due to a bug one extra unused value is removed from the stack.
 
 	// Array
@@ -138,9 +139,14 @@ const (
 	PICKITEM  OpCode = 0xC3
 	SETITEM   OpCode = 0xC4
 	NEWARRAY  OpCode = 0xC5
-	NEWSTRUCT        = 0xC6
+	NEWSTRUCT OpCode = 0xC6
+	NEWMAP    OpCode = 0xC7
 	APPEND    OpCode = 0xC8
 	REVERSE   OpCode = 0xC9
+	REMOVE    OpCode = 0xCA
+	HASKEY    OpCode = 0xCB
+	KEYS      OpCode = 0xCC
+	VALUES    OpCode = 0xCD
 
 	//Exception
 	THROW      = 0xF0

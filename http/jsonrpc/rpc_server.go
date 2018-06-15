@@ -47,6 +47,7 @@ func StartRPCServer() error {
 
 	rpc.HandleFunc("getblocksysfee", rpc.GetSystemFee)
 	rpc.HandleFunc("getcontractstate", rpc.GetContractState)
+	rpc.HandleFunc("getmempooltxcount", rpc.GetMemPoolTxCount)
 	rpc.HandleFunc("getmempooltxstate", rpc.GetMemPoolTxState)
 	rpc.HandleFunc("getsmartcodeevent", rpc.GetSmartCodeEvent)
 	rpc.HandleFunc("getblockheightbytxhash", rpc.GetBlockHeightByTxHash)
@@ -54,6 +55,7 @@ func StartRPCServer() error {
 	rpc.HandleFunc("getbalance", rpc.GetBalance)
 	rpc.HandleFunc("getallowance", rpc.GetAllowance)
 	rpc.HandleFunc("getmerkleproof", rpc.GetMerkleProof)
+	rpc.HandleFunc("getblocktxsbyheight", rpc.GetBlockTxsByHeight)
 	rpc.HandleFunc("getgasprice", rpc.GetGasPrice)
 	rpc.HandleFunc("getunclaimong", rpc.GetUnclaimOng)
 

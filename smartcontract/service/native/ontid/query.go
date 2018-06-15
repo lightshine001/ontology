@@ -26,6 +26,7 @@ import (
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/common/serialization"
 	"github.com/ontio/ontology/smartcontract/service/native"
+	"github.com/ontio/ontology/smartcontract/service/native/utils"
 )
 
 func GetPublicKeyByID(srvc *native.NativeService) ([]byte, error) {
@@ -89,7 +90,7 @@ func GetPublicKeys(srvc *native.NativeService) ([]byte, error) {
 	args := bytes.NewBuffer(srvc.Input)
 	did, err := serialization.ReadVarBytes(args)
 	if err != nil {
-		return nil, fmt.Errorf("get public keys error: invalid argument", err)
+		return nil, fmt.Errorf("get public keys error: invalid argument, %s", err)
 	}
 	if len(did) == 0 {
 		return nil, errors.New("get public keys error: invalid ID")
@@ -155,7 +156,7 @@ func GetKeyState(srvc *native.NativeService) ([]byte, error) {
 		return nil, fmt.Errorf("get key state failed: argument 0 error, %s", err)
 	}
 	// arg1: public key ID
-	arg1, err := serialization.ReadUint32(args)
+	arg1, err := utils.ReadVarUint(args)
 	if err != nil {
 		return nil, fmt.Errorf("get key state failed: argument 1 error, %s", err)
 	}
@@ -165,7 +166,7 @@ func GetKeyState(srvc *native.NativeService) ([]byte, error) {
 		return nil, fmt.Errorf("get key state failed: %s", err)
 	}
 
-	owner, err := getPk(srvc, key, arg1)
+	owner, err := getPk(srvc, key, uint32(arg1))
 	if err != nil {
 		return nil, fmt.Errorf("get key state failed: %s", err)
 	} else if owner == nil {

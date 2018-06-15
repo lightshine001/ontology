@@ -21,9 +21,6 @@ package dbft
 import (
 	"bytes"
 	"fmt"
-	"reflect"
-	"time"
-
 	"github.com/ontio/ontology-eventbus/actor"
 	"github.com/ontio/ontology/account"
 	"github.com/ontio/ontology/common"
@@ -39,6 +36,8 @@ import (
 	"github.com/ontio/ontology/events/message"
 	p2pmsg "github.com/ontio/ontology/p2pserver/message/types"
 	"github.com/ontio/ontology/validator/increment"
+	"reflect"
+	"time"
 )
 
 type DbftService struct {
@@ -59,7 +58,6 @@ type DbftService struct {
 }
 
 func NewDbftService(bkAccount *account.Account, txpool, p2p *actor.PID) (*DbftService, error) {
-
 	service := &DbftService{
 		Account:       bkAccount,
 		timer:         time.NewTimer(time.Second * 15),
@@ -148,8 +146,6 @@ func (this *DbftService) Halt() error {
 func (self *DbftService) handleBlockPersistCompleted(block *types.Block) {
 	log.Infof("persist block: %x", block.Hash())
 	self.p2p.Broadcast(block.Hash())
-
-	self.blockReceivedTime = time.Now()
 
 	self.InitializeConsensus(0)
 }
@@ -298,7 +294,6 @@ func (ds *DbftService) InitializeConsensus(viewNum byte) error {
 			ds.timer.Reset(genesis.GenBlockTime - span)
 		}
 	} else {
-
 		//backup peer
 		ds.context.State = Backup
 		ds.timerHeight = ds.context.Height
@@ -503,6 +498,8 @@ func (ds *DbftService) PrepareRequestReceived(payload *p2pmsg.ConsensusPayload, 
 	payload = ds.context.MakePrepareResponse(ds.context.Signatures[ds.context.BookkeeperIndex])
 	ds.SignAndRelay(payload)
 
+	ds.blockReceivedTime = time.Now()
+
 	log.Info("Prepare Request finished")
 }
 
@@ -704,6 +701,9 @@ func (ds *DbftService) Timeout() {
 		}
 		payload := ds.context.MakePrepareRequest()
 		ds.SignAndRelay(payload)
+
+		ds.blockReceivedTime = time.Now()
+
 		ds.timer.Stop()
 		ds.timer.Reset(genesis.GenBlockTime << (ds.timeView + 1))
 	} else if (ds.context.State.HasFlag(Primary) && ds.context.State.HasFlag(RequestSent)) || ds.context.State.HasFlag(Backup) {

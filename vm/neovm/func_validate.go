@@ -23,6 +23,8 @@ import (
 	"encoding/binary"
 	"math/big"
 
+	"fmt"
+	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/vm/neovm/errors"
 	"github.com/ontio/ontology/vm/neovm/types"
 )
@@ -278,8 +280,8 @@ func validateMul(e *ExecutionEngine) error {
 	}
 	x2 := PeekBigInteger(e)
 	x1 := PeekNBigInt(1, e)
-	lx2 := len(types.ConvertBigIntegerToBytes(x2))
-	lx1 := len(types.ConvertBigIntegerToBytes(x1))
+	lx2 := len(common.BigIntToNeoBytes(x2))
+	lx1 := len(common.BigIntToNeoBytes(x1))
 	if lx2 > MAX_SIZE_FOR_BIGINTEGER || lx1 > MAX_SIZE_FOR_BIGINTEGER || (lx1+lx2) > MAX_SIZE_FOR_BIGINTEGER {
 		return errors.ERR_OVER_MAX_BIGINTEGER_SIZE
 	}
@@ -354,19 +356,35 @@ func validatePickItem(e *ExecutionEngine) error {
 	if err := LogStackTrace(e, 2, "[validatePickItem]"); err != nil {
 		return err
 	}
-	index := PeekBigInteger(e)
-	if index.Sign() < 0 {
-		return errors.ERR_BAD_VALUE
-	}
+
 	item := PeekNStackItem(1, e)
 	if item == nil {
 		return errors.ERR_BAD_VALUE
 	}
-	if _, ok := item.(*types.Array); !ok {
-		return errors.ERR_NOT_ARRAY
-	}
-	if index.Cmp(big.NewInt(int64(len(item.GetArray())))) >= 0 {
-		return errors.ERR_OVER_MAX_ARRAY_SIZE
+	switch item.(type) {
+	case *types.Array:
+		index := PeekBigInteger(e)
+		if index.Sign() < 0 {
+			return errors.ERR_BAD_VALUE
+		}
+		if index.Cmp(big.NewInt(int64(len(item.GetArray())))) >= 0 {
+			return errors.ERR_OVER_MAX_ARRAY_SIZE
+		}
+	case *types.Map:
+		key := PeekNStackItem(0, e)
+		if key == nil {
+			return errors.ERR_BAD_VALUE
+		}
+	case *types.Struct:
+		index := PeekBigInteger(e)
+		if index.Sign() < 0 {
+			return errors.ERR_BAD_VALUE
+		}
+		if index.Cmp(big.NewInt(int64(len(item.GetArray())))) >= 0 {
+			return errors.ERR_OVER_MAX_ARRAY_SIZE
+		}
+	default:
+		return fmt.Errorf("validatePickItem error: %s", errors.ERR_NOT_SUPPORT_TYPE)
 	}
 	return nil
 }
@@ -375,20 +393,39 @@ func validatorSetItem(e *ExecutionEngine) error {
 	if err := LogStackTrace(e, 3, "[validatorSetItem]"); err != nil {
 		return err
 	}
-	newItem := PeekNStackItem(0, e)
-	if newItem == nil {
+
+	value := PeekNStackItem(0, e)
+	if value == nil {
 		return errors.ERR_BAD_VALUE
 	}
-	index := PeekNBigInt(1, e)
-	if index.Sign() < 0 {
-		return errors.ERR_BAD_VALUE
-	}
+
 	item := PeekNStackItem(2, e)
 	if item == nil {
 		return errors.ERR_BAD_VALUE
 	}
-	if index.Cmp(big.NewInt(int64(len(item.GetArray())))) >= 0 {
-		return errors.ERR_OVER_MAX_ARRAY_SIZE
+	if _, ok := item.(*types.Array); ok {
+		index := PeekNBigInt(1, e)
+		if index.Sign() < 0 {
+			return errors.ERR_BAD_VALUE
+		}
+		if index.Cmp(big.NewInt(int64(len(item.GetArray())))) >= 0 {
+			return errors.ERR_OVER_MAX_ARRAY_SIZE
+		}
+	} else if _, ok := item.(*types.Map); ok {
+		key := PeekNStackItem(1, e)
+		if key == nil {
+			return errors.ERR_BAD_VALUE
+		}
+	} else if _, ok := item.(*types.Struct); ok {
+		index := PeekNBigInt(1, e)
+		if index.Sign() < 0 {
+			return errors.ERR_BAD_VALUE
+		}
+		if index.Cmp(big.NewInt(int64(len(item.GetArray())))) >= 0 {
+			return errors.ERR_OVER_MAX_ARRAY_SIZE
+		}
+	} else {
+		return fmt.Errorf("validatorSetItem error: %s", errors.ERR_NOT_SUPPORT_TYPE)
 	}
 	return nil
 }
@@ -428,8 +465,10 @@ func validateAppend(e *ExecutionEngine) error {
 		return err
 	}
 	arrItem := PeekNStackItem(1, e)
-	if _, ok := arrItem.(*types.Array); !ok {
-		return errors.ERR_NOT_ARRAY
+	_, ok1 := arrItem.(*types.Array)
+	_, ok2 := arrItem.(*types.Struct)
+	if !ok1 && !ok2 {
+		return fmt.Errorf("validateAppend error: %s", errors.ERR_NOT_SUPPORT_TYPE)
 	}
 	return nil
 }
@@ -439,8 +478,10 @@ func validatorReverse(e *ExecutionEngine) error {
 		return err
 	}
 	arrItem := PeekStackItem(e)
-	if _, ok := arrItem.(*types.Array); !ok {
-		return errors.ERR_NOT_ARRAY
+	_, ok1 := arrItem.(*types.Array)
+	_, ok2 := arrItem.(*types.Struct)
+	if !ok1 && !ok2 {
+		return fmt.Errorf("validatorReverse error: %s", errors.ERR_NOT_SUPPORT_TYPE)
 	}
 	return nil
 }
@@ -456,7 +497,7 @@ func CheckBigInteger(value *big.Int) bool {
 	if value == nil {
 		return false
 	}
-	if len(types.ConvertBigIntegerToBytes(value)) > MAX_SIZE_FOR_BIGINTEGER {
+	if len(common.BigIntToNeoBytes(value)) > MAX_SIZE_FOR_BIGINTEGER {
 		return false
 	}
 	return true

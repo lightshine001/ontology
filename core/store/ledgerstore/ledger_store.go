@@ -20,11 +20,6 @@ package ledgerstore
 
 import (
 	"fmt"
-	"math"
-	"sort"
-	"strings"
-	"sync"
-
 	"github.com/ontio/ontology-crypto/keypair"
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/config"
@@ -32,6 +27,7 @@ import (
 	"github.com/ontio/ontology/core/payload"
 	"github.com/ontio/ontology/core/signature"
 	"github.com/ontio/ontology/core/states"
+	scom "github.com/ontio/ontology/core/store/common"
 	"github.com/ontio/ontology/core/store/statestore"
 	"github.com/ontio/ontology/core/types"
 	"github.com/ontio/ontology/errors"
@@ -43,7 +39,11 @@ import (
 	"github.com/ontio/ontology/smartcontract/service/neovm"
 	sstate "github.com/ontio/ontology/smartcontract/states"
 	"github.com/ontio/ontology/smartcontract/storage"
-	vmtype "github.com/ontio/ontology/smartcontract/types"
+	"math"
+	"os"
+	"sort"
+	"strings"
+	"sync"
 )
 
 const (
@@ -53,10 +53,10 @@ const (
 
 var (
 	//Storage save path.
-	DBDirEvent          = "Chain/ledgerevent"
-	DBDirBlock          = "Chain/block"
-	DBDirState          = "Chain/states"
-	MerkleTreeStorePath = "Chain/merkle_tree.db"
+	DBDirEvent          = "ledgerevent"
+	DBDirBlock          = "block"
+	DBDirState          = "states"
+	MerkleTreeStorePath = "merkle_tree.db"
 )
 
 //LedgerStoreImp is main store struct fo ledger
@@ -74,34 +74,30 @@ type LedgerStoreImp struct {
 }
 
 //NewLedgerStore return LedgerStoreImp instance
-func NewLedgerStore() (*LedgerStoreImp, error) {
+func NewLedgerStore(dataDir string) (*LedgerStoreImp, error) {
 	ledgerStore := &LedgerStoreImp{
 		headerIndex: make(map[uint32]common.Uint256),
 		headerCache: make(map[common.Uint256]*types.Header, 0),
 	}
 
-	blockStore, err := NewBlockStore(DBDirBlock, true)
+	blockStore, err := NewBlockStore(fmt.Sprintf("%s%s%s", dataDir, string(os.PathSeparator), DBDirBlock), true)
 	if err != nil {
 		return nil, fmt.Errorf("NewBlockStore error %s", err)
 	}
 	ledgerStore.blockStore = blockStore
 
-	stateStore, err := NewStateStore(DBDirState, MerkleTreeStorePath)
+	stateStore, err := NewStateStore(fmt.Sprintf("%s%s%s", dataDir, string(os.PathSeparator), DBDirState),
+		fmt.Sprintf("%s%s%s", dataDir, string(os.PathSeparator), MerkleTreeStorePath))
 	if err != nil {
 		return nil, fmt.Errorf("NewStateStore error %s", err)
 	}
 	ledgerStore.stateStore = stateStore
 
-	eventState, err := NewEventStore(DBDirEvent)
+	eventState, err := NewEventStore(fmt.Sprintf("%s%s%s", dataDir, string(os.PathSeparator), DBDirEvent))
 	if err != nil {
 		return nil, fmt.Errorf("NewEventStore error %s", err)
 	}
 	ledgerStore.eventStore = eventState
-
-	err = ledgerStore.init()
-	if err != nil {
-		return nil, fmt.Errorf("init error %s", err)
-	}
 
 	return ledgerStore, nil
 }
@@ -142,6 +138,7 @@ func (this *LedgerStoreImp) InitLedgerStoreWithGenesisBlock(genesisBlock *types.
 		if err != nil {
 			return fmt.Errorf("init error %s", err)
 		}
+		log.Infof("GenesisBlock init success. GenesisBlock hash:%x\n", genesisBlock.Hash())
 	} else {
 		genesisHash := genesisBlock.Hash()
 		exist, err := this.blockStore.ContainBlock(genesisHash)
@@ -151,13 +148,17 @@ func (this *LedgerStoreImp) InitLedgerStoreWithGenesisBlock(genesisBlock *types.
 		if !exist {
 			return fmt.Errorf("GenesisBlock arenot init correctly")
 		}
+		err = this.init()
+		if err != nil {
+			return fmt.Errorf("init error %s", err)
+		}
 	}
 	return nil
 }
 
 func (this *LedgerStoreImp) hasAlreadyInitGenesisBlock() (bool, error) {
 	version, err := this.blockStore.GetVersion()
-	if err != nil {
+	if err != nil && err != scom.ErrNotFound {
 		return false, fmt.Errorf("GetVersion error %s", err)
 	}
 	return version == SYSTEM_VERSION, nil
@@ -195,11 +196,7 @@ func (this *LedgerStoreImp) initCurrentBlock() error {
 }
 
 func (this *LedgerStoreImp) initHeaderIndexList() error {
-	currBlockHeight, currBlockHash := this.GetCurrentBlock()
-	var empty common.Uint256
-	if currBlockHash == empty {
-		return nil
-	}
+	currBlockHeight := this.GetCurrentBlockHeight()
 	headerIndex, err := this.blockStore.GetHeaderIndexList()
 	if err != nil {
 		return fmt.Errorf("LoadHeaderIndexList error %s", err)
@@ -214,7 +211,7 @@ func (this *LedgerStoreImp) initHeaderIndexList() error {
 		if err != nil {
 			return fmt.Errorf("LoadBlockHash height %d error %s", height, err)
 		}
-		if blockHash == empty {
+		if blockHash == common.UINT256_EMPTY {
 			return fmt.Errorf("LoadBlockHash height %d hash nil", height)
 		}
 		this.headerIndex[height] = blockHash
@@ -374,7 +371,7 @@ func (this *LedgerStoreImp) verifyHeader(header *types.Header) error {
 	var prevHeader *types.Header
 	prevHeaderHash := header.PrevBlockHash
 	prevHeader, err := this.GetHeaderByHash(prevHeaderHash)
-	if err != nil {
+	if err != nil && err != scom.ErrNotFound {
 		return fmt.Errorf("get prev header error %s", err)
 	}
 	if prevHeader == nil {
@@ -384,13 +381,12 @@ func (this *LedgerStoreImp) verifyHeader(header *types.Header) error {
 	if prevHeader.Height+1 != header.Height {
 		return fmt.Errorf("block height is incorrect")
 	}
+
+	if prevHeader.Timestamp >= header.Timestamp {
+		return fmt.Errorf("block timestamp is incorrect")
+	}
 	consensusType := strings.ToLower(config.DefConfig.Genesis.ConsensusType)
 	if consensusType != "vbft" {
-
-		if prevHeader.Timestamp >= header.Timestamp {
-			return fmt.Errorf("block timestamp is incorrect")
-		}
-
 		address, err := types.AddressFromBookkeepers(header.Bookkeepers)
 		if err != nil {
 			return err
@@ -630,9 +626,6 @@ func (this *LedgerStoreImp) handleTransaction(stateBatch *statestore.StateBatch,
 				return fmt.Errorf("HandleInvokeTransaction tx %x error %s", txHash, stateBatch.Error())
 			}
 		}
-	case types.Claim:
-	case types.Enrollment:
-	case types.Vote:
 	}
 	return nil
 }
@@ -754,7 +747,7 @@ func (this *LedgerStoreImp) GetEventNotifyByTx(tx common.Uint256) (*event.Execut
 }
 
 //GetEventNotifyByBlock return the transaction hash which have event notice after execution of smart contract. Wrap function of EventStore.GetEventNotifyByBlock
-func (this *LedgerStoreImp) GetEventNotifyByBlock(height uint32) ([]common.Uint256, error) {
+func (this *LedgerStoreImp) GetEventNotifyByBlock(height uint32) ([]*event.ExecuteNotify, error) {
 	return this.eventStore.GetEventNotifyByBlock(height)
 }
 
@@ -785,12 +778,18 @@ func (this *LedgerStoreImp) PreExecuteContract(tx *types.Transaction) (*sstate.P
 		Config:     config,
 		Store:      this,
 		CloneCache: storage.NewCloneCache(this.stateStore.NewStateBatch()),
-		Code:       invoke.Code,
 		Gas:        math.MaxUint64,
 	}
 
 	//start the smart contract executive function
-	result, err := sc.Execute()
+	engine, err := sc.NewExecuteEngine(invoke.Code)
+	if err != nil {
+		return nil, err
+	}
+	result, err := engine.Invoke()
+	if err != nil {
+		return nil, err
+	}
 	gasCost := math.MaxUint64 - sc.Gas
 	if gasCost < neovm.TRANSACTION_GAS {
 		gasCost = neovm.TRANSACTION_GAS
@@ -798,18 +797,7 @@ func (this *LedgerStoreImp) PreExecuteContract(tx *types.Transaction) (*sstate.P
 	if err != nil {
 		return &sstate.PreExecResult{State: event.CONTRACT_STATE_FAIL, Gas: gasCost, Result: nil}, err
 	}
-
-	prefix := invoke.Code.VmType
-	if prefix == vmtype.NEOVM {
-		result = scommon.ConvertNeoVmTypeHexString(result)
-	} else if prefix == vmtype.WASMVM {
-		if v, ok := result.([]byte); ok {
-			result = common.ToHexString(v)
-		}
-	} else if prefix == vmtype.Native {
-		result = common.ToHexString(result.([]byte))
-	}
-	return &sstate.PreExecResult{State: event.CONTRACT_STATE_SUCCESS, Gas: gasCost, Result: result}, nil
+	return &sstate.PreExecResult{State: event.CONTRACT_STATE_SUCCESS, Gas: gasCost, Result: scommon.ConvertNeoVmTypeHexString(result)}, nil
 }
 
 //Close ledger store.

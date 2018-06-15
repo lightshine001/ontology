@@ -378,13 +378,13 @@ func (this *DHT) processPacket(from *net.UDPAddr, packet []byte) {
 	log.Infof("Recv UDP msg %s %v", msgType, from)
 	switch msgType {
 	case common.DHT_PING:
-		this.pingHandle(from, packet)
+		this.pingHandle(from, msg)
 	case common.DHT_PONG:
-		this.pongHandle(from, packet)
+		this.pongHandle(from, msg)
 	case common.DHT_FIND_NODE:
-		this.findNodeHandle(from, packet)
+		this.findNodeHandle(from, msg)
 	case common.DHT_NEIGHBORS:
-		this.neighborsHandle(from, packet)
+		this.neighborsHandle(from, msg)
 	default:
 		log.Infof("processPacket: unknown msg %s", msgType)
 	}

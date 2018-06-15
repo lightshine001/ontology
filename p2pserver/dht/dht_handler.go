@@ -8,10 +8,10 @@ import (
 )
 
 // findNodeHandle handles a find node message from UDP network
-func (this *DHT) findNodeHandle(from *net.UDPAddr, packet []byte) {
-	var findNode mt.FindNode
-	if err := findNode.Deserialization(packet); err != nil {
-		log.Error(err)
+func (this *DHT) findNodeHandle(from *net.UDPAddr, msg mt.Message) {
+	findNode, ok := msg.(*mt.FindNode)
+	if !ok {
+		log.Error("find node handle detected error message type!")
 		return
 	}
 
@@ -24,13 +24,12 @@ func (this *DHT) findNodeHandle(from *net.UDPAddr, packet []byte) {
 }
 
 // neighborsHandle handles a neighbors message from UDP network
-func (this *DHT) neighborsHandle(from *net.UDPAddr, packet []byte) {
-	var neighbors mt.Neighbors
-	if err := neighbors.Deserialization(packet); err != nil {
-		log.Error(err)
+func (this *DHT) neighborsHandle(from *net.UDPAddr, msg mt.Message) {
+	neighbors, ok := msg.(*mt.Neighbors)
+	if !ok {
+		log.Error("neighbors handle detected error message type!")
 		return
 	}
-
 	if node := this.routingTable.queryNode(neighbors.FromID); node == nil {
 		return
 	}
@@ -68,13 +67,12 @@ func (this *DHT) neighborsHandle(from *net.UDPAddr, packet []byte) {
 }
 
 // pingHandle handles a ping message from UDP network
-func (this *DHT) pingHandle(from *net.UDPAddr, packet []byte) {
-	var ping mt.DHTPing
-	if err := ping.Deserialization(packet); err != nil {
-		log.Error(err)
+func (this *DHT) pingHandle(from *net.UDPAddr, msg mt.Message) {
+	ping, ok := msg.(*mt.DHTPing)
+	if !ok {
+		log.Error("ping handle detected error message type!")
 		return
 	}
-
 	if ping.Version != this.version {
 		log.Errorf("pingHandle: version is incompatible. local %d remote %d",
 			this.version, ping.Version)
@@ -100,13 +98,12 @@ func (this *DHT) pingHandle(from *net.UDPAddr, packet []byte) {
 }
 
 // pongHandle handles a pong message from UDP network
-func (this *DHT) pongHandle(from *net.UDPAddr, packet []byte) {
-	var pong mt.DHTPong
-	if err := pong.Deserialization(packet); err != nil {
-		log.Error(err)
+func (this *DHT) pongHandle(from *net.UDPAddr, msg mt.Message) {
+	pong, ok := msg.(*mt.DHTPong)
+	if !ok {
+		log.Error("pong handle detected error message type!")
 		return
 	}
-
 	if pong.Version != this.version {
 		log.Errorf("pongHandle: version is incompatible. local %d remote %d",
 			this.version, pong.Version)

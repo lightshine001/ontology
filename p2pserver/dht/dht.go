@@ -420,6 +420,7 @@ func (this *DHT) processPacket(from *net.UDPAddr, packet []byte) {
 	switch msgType {
 	case common.DHT_PING:
 <<<<<<< HEAD
+<<<<<<< HEAD
 		this.pingHandle(from, msg)
 	case common.DHT_PONG:
 		this.pongHandle(from, msg)
@@ -429,13 +430,20 @@ func (this *DHT) processPacket(from *net.UDPAddr, packet []byte) {
 		this.neighborsHandle(from, msg)
 =======
 		this.pingHandle(from, packet)
+=======
+		this.pingHandle(from, msg)
+>>>>>>> fix dht handle bug
 	case common.DHT_PONG:
-		this.pongHandle(from, packet)
+		this.pongHandle(from, msg)
 	case common.DHT_FIND_NODE:
-		this.findNodeHandle(from, packet)
+		this.findNodeHandle(from, msg)
 	case common.DHT_NEIGHBORS:
+<<<<<<< HEAD
 		this.neighborsHandle(from, packet)
 >>>>>>> clean dht network message
+=======
+		this.neighborsHandle(from, msg)
+>>>>>>> fix dht handle bug
 	default:
 		log.Infof("processPacket: unknown msg %s", msgType)
 	}

@@ -377,11 +377,15 @@ func (this *DHT) pong(addr *net.UDPAddr) error {
 		return errors.New("Parse IP address error")
 	}
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 	pongMsg := msgpack.NewDHTPong(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
 =======
 	pongMsg := msgpack.NewDHTPing(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
 >>>>>>> clean dht network message
+=======
+	pongMsg := msgpack.NewDHTPong(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
+>>>>>>> add unit test file
 	bf := new(bytes.Buffer)
 	mt.WriteMessage(bf, pongMsg)
 	this.send(addr, bf.Bytes())

@@ -59,7 +59,6 @@ func AddrReqHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, ar
 		return
 	}
 }
-
 // HeaderReqHandle handles the header sync req from peer
 func HeadersReqHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args ...interface{}) {
 	log.Debug("receive headers request message", data.Addr, data.Id)
@@ -147,6 +146,13 @@ func BlockHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args
 		return
 	}
 
+	remotePeer := p2p.GetPeer(data.Id)
+	if remotePeer == nil {
+		log.Error("remotePeer invalid in BlockHandle")
+		return
+	}
+	remotePeer.MarkHashAsSeen(block.Blk.Hash())
+
 	if pid != nil {
 		var block = data.Payload.(*msgTypes.Block)
 		input := &msgCommon.AppendBlock{
@@ -166,6 +172,13 @@ func ConsensusHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, 
 		log.Error("remotePeer invalid in BlockHandle")
 		return
 	}
+
+	remotePeer := p2p.GetPeer(data.Id)
+	if remotePeer == nil {
+		log.Error("remotePeer invalid in BlockHandle")
+		return
+	}
+	remotePeer.MarkHashAsSeen(consensus.Cons.Hash())
 
 	if actor.ConsensusPid != nil {
 		var consensus = data.Payload.(*msgTypes.Consensus)
@@ -199,7 +212,6 @@ func TransactionHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID
 		return
 	}
 	remotePeer.MarkHashAsSeen(trn.Txn.Hash())
-
 }
 
 // VersionHandle handles version handshake protocol from peer
@@ -438,7 +450,6 @@ func VerAckHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, arg
 				go p2p.Connect(nodeConsensusAddr, true)
 			}
 		}
-
 		msg := msgpack.NewAddrReq()
 		go p2p.Send(remotePeer, msg, false)
 	}

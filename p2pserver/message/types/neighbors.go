@@ -74,14 +74,12 @@ func (this Neighbors) Serialization() ([]byte, error) {
 			return nil, err
 		}
 	}
-
 	return p.Bytes(), nil
 }
 
 //Deserialize message payload
 func (this *Neighbors) Deserialization(p []byte) error {
 	buf := bytes.NewBuffer(p)
-
 	id, err := serialization.ReadVarBytes(buf)
 	if err != nil {
 		return err

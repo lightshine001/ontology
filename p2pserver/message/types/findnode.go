@@ -27,8 +27,6 @@ import (
 	"github.com/ontio/ontology/p2pserver/common"
 	"github.com/ontio/ontology/p2pserver/dht/types"
 )
-
-type FindNode struct {
 	FromID   types.NodeID
 	TargetID types.NodeID
 }

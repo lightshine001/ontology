@@ -39,13 +39,13 @@ func (this *DHT) neighborsHandle(from *net.UDPAddr, msg mt.Message) {
 	this.messagePool.DeleteRequest(requestId)
 
 	pingReqIds := make([]types.RequestId, 0)
+
 	for i := 0; i < len(neighbors.Nodes); i++ {
 		node := &neighbors.Nodes[i]
 		// ping this node
 		addr, err := getNodeUDPAddr(node)
 		if err != nil {
 			continue
-
 		}
 		reqId, isNewRequest := this.messagePool.AddRequest(node, types.DHT_PING_REQUEST, nil, true)
 		if isNewRequest {

@@ -137,6 +137,7 @@ func (this *DHTPing) Deserialization(p []byte) error {
 		return err
 	}
 
+
 	this.SrcEndPoint.TCPPort, err = serialization.ReadUint16(buf)
 	if err != nil {
 		log.Errorf("failed to deserialize ping src tcp port %v", err)
@@ -151,12 +152,14 @@ func (this *DHTPing) Deserialization(p []byte) error {
 	copy(this.DestEndPoint.Addr[:], addr)
 
 	this.DestEndPoint.UDPPort, err = serialization.ReadUint16(buf)
+
 	if err != nil {
 		log.Errorf("failed to deserialize ping dest udp port %v", err)
 		return err
 	}
 
 	this.DestEndPoint.TCPPort, err = serialization.ReadUint16(buf)
+
 	if err != nil {
 		log.Errorf("failed to deserialize ping dest tcp port %v", err)
 		return err

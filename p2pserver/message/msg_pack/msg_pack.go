@@ -257,3 +257,63 @@ func NewNeighbors(nodeID types.NodeID, nodes []*types.Node) mt.Message {
 
 	return neighbors
 }
+
+func NewDHTPingPayload() mt.DHTPingPayload {
+	return mt.DHTPingPayload{}
+}
+
+//DHT ping message packet
+func NewDHTPing(p mt.DHTPingPayload) ([]byte, error) {
+	var ping mt.DHTPing
+	ping.P = p
+
+	buf, err := ping.Serialization()
+	if err != nil {
+		log.Error("Error Convert net message ", err.Error())
+		return nil, err
+	}
+
+	return buf, nil
+}
+
+//DHT pong message packet
+func NewDHTPong(p mt.DHTPongPayload) ([]byte, error) {
+	var pong mt.DHTPong
+	pong.P = p
+
+	buf, err := pong.Serialization()
+	if err != nil {
+		log.Error("Error Convert net message ", err.Error())
+		return nil, err
+	}
+
+	return buf, nil
+}
+
+//DHT findNode message packet
+func NewFindNode(p mt.FindNodePayload) ([]byte, error) {
+	var findNode mt.FindNode
+	findNode.P = p
+
+	buf, err := findNode.Serialization()
+	if err != nil {
+		log.Error("Error Convert net message ", err.Error())
+		return nil, err
+	}
+
+	return buf, nil
+}
+
+//DHT neighbors message packet
+func NewNeighbors(p mt.NeighborsPayload) ([]byte, error) {
+	var neighbors mt.Neighbors
+	neighbors.P = p
+
+	buf, err := neighbors.Serialization()
+	if err != nil {
+		log.Error("Error Convert net message ", err.Error())
+		return nil, err
+	}
+
+	return buf, nil
+}

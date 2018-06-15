@@ -343,11 +343,13 @@ func (this *DHT) ping(addr *net.UDPAddr) error {
 
 // pong reply remote node when receiving ping
 func (this *DHT) pong(addr *net.UDPAddr) error {
+
 	ip := net.ParseIP(this.addr).To16()
 	if ip == nil {
 		log.Error("Parse IP address error\n", this.addr)
 		return errors.New("Parse IP address error")
 	}
+
 	pongMsg := msgpack.NewDHTPong(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
 	bf := new(bytes.Buffer)
 	mt.WriteMessage(bf, pongMsg)
@@ -364,6 +366,7 @@ func (this *DHT) findNodeReply(addr *net.UDPAddr, targetId types.NodeID) error {
 	bf := new(bytes.Buffer)
 	mt.WriteMessage(bf, neighborsMsg)
 	this.send(addr, bf.Bytes())
+
 	return nil
 }
 

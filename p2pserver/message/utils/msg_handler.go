@@ -192,14 +192,12 @@ func TransactionHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID
 	actor.AddTransaction(trn.Txn)
 	log.Debug("receive Transaction message hash", trn.Txn.Hash())
 
-
 	remotePeer := p2p.GetPeer(data.Id)
 	if remotePeer == nil {
 		log.Error("remotePeer invalid in TransactionHandle")
 		return
 	}
 	remotePeer.MarkHashAsSeen(trn.Txn.Hash())
-
 }
 
 // VersionHandle handles version handshake protocol from peer
@@ -438,7 +436,6 @@ func VerAckHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, arg
 				go p2p.Connect(nodeConsensusAddr, true)
 			}
 		}
-
 		msg := msgpack.NewAddrReq()
 		go p2p.Send(remotePeer, msg, false)
 	}

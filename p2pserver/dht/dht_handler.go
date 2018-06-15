@@ -41,9 +41,12 @@ func (this *DHT) neighborsHandle(from *net.UDPAddr, msg mt.Message) {
 		return
 	}
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 
 >>>>>>> clean dht network message
+=======
+>>>>>>> fix dht handle bug
 	if node := this.routingTable.queryNode(neighbors.FromID); node == nil {
 		return
 	}
@@ -123,9 +126,12 @@ func (this *DHT) pingHandle(from *net.UDPAddr, msg mt.Message) {
 		return
 	}
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 
 >>>>>>> clean dht network message
+=======
+>>>>>>> fix dht handle bug
 	if ping.Version != this.version {
 		log.Errorf("pingHandle: version is incompatible. local %d remote %d",
 			this.version, ping.Version)
@@ -188,9 +194,12 @@ func (this *DHT) pongHandle(from *net.UDPAddr, msg mt.Message) {
 		return
 	}
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 
 >>>>>>> clean dht network message
+=======
+>>>>>>> fix dht handle bug
 	if pong.Version != this.version {
 		log.Errorf("pongHandle: version is incompatible. local %d remote %d",
 			this.version, pong.Version)

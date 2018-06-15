@@ -348,7 +348,7 @@ func (this *DHT) pong(addr *net.UDPAddr) error {
 		log.Error("Parse IP address error\n", this.addr)
 		return errors.New("Parse IP address error")
 	}
-	pongMsg := msgpack.NewDHTPing(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
+	pongMsg := msgpack.NewDHTPong(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
 	bf := new(bytes.Buffer)
 	mt.WriteMessage(bf, pongMsg)
 	this.send(addr, bf.Bytes())

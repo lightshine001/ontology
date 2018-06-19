@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/ontio/ontology-crypto/keypair"
+	"github.com/ontio/ontology-crypto/vrf"
 	"github.com/ontio/ontology-eventbus/actor"
 	"github.com/ontio/ontology/account"
 	"github.com/ontio/ontology/common"
@@ -35,15 +36,15 @@ import (
 	actorTypes "github.com/ontio/ontology/consensus/actor"
 	"github.com/ontio/ontology/consensus/vbft/config"
 	"github.com/ontio/ontology/core/ledger"
+	"github.com/ontio/ontology/core/payload"
 	"github.com/ontio/ontology/core/types"
 	"github.com/ontio/ontology/core/utils"
 	"github.com/ontio/ontology/events"
 	"github.com/ontio/ontology/events/message"
 	p2pmsg "github.com/ontio/ontology/p2pserver/message/types"
 	gover "github.com/ontio/ontology/smartcontract/service/native/governance"
+	ninit "github.com/ontio/ontology/smartcontract/service/native/init"
 	nutils "github.com/ontio/ontology/smartcontract/service/native/utils"
-	"github.com/ontio/ontology/smartcontract/states"
-	stypes "github.com/ontio/ontology/smartcontract/types"
 	"github.com/ontio/ontology/validator/increment"
 )
 
@@ -224,7 +225,7 @@ func (self *Server) NewConsensusPayload(payload *p2pmsg.ConsensusPayload) {
 	}
 	peerIdx, present := self.peerPool.GetPeerIndex(peerID)
 	if !present {
-		log.Errorf("invalid consensus node: %s", peerID.String())
+		log.Errorf("invalid consensus node: %s", peerID)
 		return
 	}
 	if self.peerPool.isNewPeer(peerIdx) {
@@ -237,7 +238,7 @@ func (self *Server) NewConsensusPayload(payload *p2pmsg.ConsensusPayload) {
 			payload:  payload,
 		}
 	} else {
-		log.Errorf("consensus msg without receiver: %d node: %s", peerIdx, peerID.String())
+		log.Errorf("consensus msg without receiver: %d node: %s", peerIdx, peerID)
 		return
 	}
 }
@@ -290,39 +291,17 @@ func (self *Server) LoadChainConfig(chainStore *ChainStore) error {
 
 	log.Infof("committed: %d, current block no: %d", self.GetCommittedBlockNo(), self.GetCurrentBlockNo())
 
-	block, blockHash := self.blockPool.getSealedBlock(self.GetCommittedBlockNo())
+	block, _ = self.blockPool.getSealedBlock(self.GetCommittedBlockNo())
 	if block == nil {
 		return fmt.Errorf("failed to get sealed block (%d)", self.GetCommittedBlockNo())
 	}
 
-	self.currentParticipantConfig, err = self.buildParticipantConfig(self.GetCurrentBlockNo(), block, blockHash, self.config)
+	self.currentParticipantConfig, err = self.buildParticipantConfig(self.GetCurrentBlockNo(), block, self.config)
 	if err != nil {
 		return fmt.Errorf("failed to build participant config: %s", err)
 	}
 
 	return nil
-}
-
-func (self *Server) getChainConfig() (*vconfig.ChainConfig, error) {
-	config, err := self.chainStore.GetVbftConfigInfo()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get chainconfig from leveldb: %s", err)
-	}
-
-	peersinfo, err := self.chainStore.GetPeersConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get peersinfo from leveldb: %s", err)
-	}
-	cfg, err := vconfig.GenesisChainConfig(config, peersinfo)
-	if err != nil {
-		return nil, fmt.Errorf("GenesisChainConfig failed: %s", err)
-	}
-	goverview, err := self.chainStore.GetGovernanceView()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get governanceview failed:%s", err)
-	}
-	cfg.View = uint32(goverview.View.Uint64())
-	return cfg, err
 }
 
 func (self *Server) nonConsensusNode() bool {
@@ -331,14 +310,14 @@ func (self *Server) nonConsensusNode() bool {
 
 //updateChainCofig
 func (self *Server) updateChainConfig() error {
-
-	block, err := self.chainStore.GetBlock(self.completedBlockNum)
-	if err != nil {
-		return fmt.Errorf("GetBlockInfo failed:%s", err)
+	block, _ := self.blockPool.getSealedBlock(self.completedBlockNum)
+	if block == nil {
+		return fmt.Errorf("GetBlockInfo failed,block is nil:%d", self.completedBlockNum)
 	}
 	if block.Info.NewChainConfig == nil {
-		return fmt.Errorf("GetNewChainConfig failed")
+		return fmt.Errorf("GetNewChainConfig nil,%d", self.completedBlockNum)
 	}
+	log.Infof("updateChainConfig blkNum:%d", self.completedBlockNum)
 	self.metaLock.Lock()
 	self.config = block.Info.NewChainConfig
 	self.metaLock.Unlock()
@@ -351,15 +330,38 @@ func (self *Server) updateChainConfig() error {
 	// 2. remove nonparticipation consensus node
 	// 3. update statemgr peers
 	// 4. reset remove peer connections, create new connections with new peers
-	peermap := make(map[vconfig.NodeID]uint32)
+	peermap := make(map[string]uint32)
 	for _, p := range self.config.Peers {
 		peermap[p.ID] = p.Index
 		_, present := self.peerPool.GetPeerIndex(p.ID)
 		if !present {
+			// check if peer pubkey support VRF
+			if pk, err := vconfig.Pubkey(p.ID); err != nil {
+				return fmt.Errorf("failed to parse peer %d PeerID: %s", p.Index, err)
+			} else if !vrf.ValidatePublicKey(pk) {
+				return fmt.Errorf("peer %d: invalid peer pubkey for VRF", p.Index)
+			}
+
 			if err := self.peerPool.addPeer(p); err != nil {
 				return fmt.Errorf("failed to add peer %d: %s", p.Index, err)
 			}
-			log.Infof("updateChainConfig add peer index%v,id:%v", p.ID.String(), p.Index)
+			publickey, err := vconfig.Pubkey(p.ID)
+			if err != nil {
+				log.Errorf("Pubkey failed: %v", err)
+				return fmt.Errorf("Pubkey failed: %v", err)
+			}
+			peerIdx := p.Index
+			if _, present := self.msgRecvC[peerIdx]; !present {
+				self.msgRecvC[peerIdx] = make(chan *p2pMsgPayload, 1024)
+			}
+
+			go func() {
+				if err := self.run(publickey); err != nil {
+					log.Errorf("server %d, processor on peer %d failed: %s",
+						self.Index, peerIdx, err)
+				}
+			}()
+			log.Infof("updateChainConfig add peer index%v,id:%v", p.ID, p.Index)
 		}
 	}
 
@@ -398,7 +400,7 @@ func (self *Server) initialize() error {
 	if err != nil {
 		return fmt.Errorf("faied to get account pubkey: %s", err)
 	}
-	log.Infof("server: %s starting", selfNodeId.String())
+	log.Infof("server: %s starting", selfNodeId)
 
 	store, err := OpenBlockStore(self.ledger)
 	if err != nil {
@@ -432,10 +434,17 @@ func (self *Server) initialize() error {
 
 	// add all consensus peers to peer_pool
 	for _, p := range self.config.Peers {
+		// check if peer pubkey support VRF
+		if pk, err := vconfig.Pubkey(p.ID); err != nil {
+			return fmt.Errorf("failed to parse peer %d PeerID: %s", p.Index, err)
+		} else if !vrf.ValidatePublicKey(pk) {
+			return fmt.Errorf("peer %d: invalid peer pubkey for VRF", p.Index)
+		}
+
 		if err := self.peerPool.addPeer(p); err != nil {
 			return fmt.Errorf("failed to add peer %d: %s", p.Index, err)
 		}
-		log.Infof("added peer: %s", p.ID.String())
+		log.Infof("added peer: %s", p.ID)
 	}
 
 	//index equal math.MaxUint32  is noconsensus node
@@ -479,6 +488,10 @@ func (self *Server) initialize() error {
 }
 
 func (self *Server) start() error {
+	// check if server pubkey support VRF
+	if !vrf.ValidatePrivateKey(self.account.PrivateKey) || !vrf.ValidatePublicKey(self.account.PublicKey) {
+		return fmt.Errorf("server %d consensus start failed: invalid account key for VRF", self.Index)
+	}
 
 	// start heartbeat ticker
 	self.timer.startPeerTicker(math.MaxUint32)
@@ -487,7 +500,6 @@ func (self *Server) start() error {
 	for _, p := range self.config.Peers {
 		peerIdx := p.Index
 		pk := self.peerPool.GetPeerPubKey(peerIdx)
-
 		if _, present := self.msgRecvC[peerIdx]; !present {
 			self.msgRecvC[peerIdx] = make(chan *p2pMsgPayload, 1024)
 		}
@@ -533,7 +545,7 @@ func (self *Server) run(peerPubKey keypair.PublicKey) error {
 	}
 	peerIdx, present := self.peerPool.GetPeerIndex(peerID)
 	if !present {
-		return fmt.Errorf("invalid consensus node: %s", peerID.String())
+		return fmt.Errorf("invalid consensus node: %s", peerID)
 	}
 
 	// broadcast heartbeat
@@ -612,15 +624,17 @@ func (self *Server) getState() ServerState {
 
 func (self *Server) updateParticipantConfig() error {
 	blkNum := self.GetCurrentBlockNo()
-
-	block, blockHash := self.blockPool.getSealedBlock(blkNum - 1)
+	block, _ := self.blockPool.getSealedBlock(blkNum - 1)
 	if block == nil {
 		return fmt.Errorf("failed to get sealed block (%d)", blkNum-1)
 	}
-
+	chainconfig := self.config
+	if block.Info.NewChainConfig != nil {
+		chainconfig = block.Info.NewChainConfig
+	}
 	var err error
 	self.metaLock.Lock()
-	if cfg, err := self.buildParticipantConfig(blkNum, block, blockHash, self.config); err == nil {
+	if cfg, err := self.buildParticipantConfig(blkNum, block, chainconfig); err == nil {
 		self.currentParticipantConfig = cfg
 	}
 	self.metaLock.Unlock()
@@ -639,7 +653,6 @@ func (self *Server) startNewRound() error {
 	if err := self.updateParticipantConfig(); err != nil {
 		return err
 	}
-
 	// check proposals in msgpool
 	var proposal *blockProposalMsg
 	if proposals := self.msgPool.GetProposalMsgs(blkNum); len(proposals) > 0 {
@@ -703,19 +716,8 @@ func (self *Server) startNewRound() error {
 		self.processProposalMsg(proposal)
 		return nil
 	}
-
-	if self.completedBlockNum+1 == self.currentBlockNum {
-		txpool := self.poolActor.GetTxnPool(true, self.validHeight(blkNum))
-		if len(txpool) != 0 {
-			self.startNewProposal(blkNum)
-		} else {
-			self.timer.startTxTicker(blkNum)
-			self.timer.StartTxBlockTimeout(blkNum)
-		}
-	} else {
-		self.timer.startTxTicker(blkNum)
-		self.timer.StartTxBlockTimeout(blkNum)
-	}
+	self.timer.startTxTicker(blkNum)
+	self.timer.StartTxBlockTimeout(blkNum)
 	return nil
 }
 
@@ -1044,19 +1046,49 @@ func (self *Server) onConsensusMsg(peerIdx uint32, msg ConsensusMsg, msgHash com
 
 func (self *Server) processProposalMsg(msg *blockProposalMsg) {
 	msgBlkNum := msg.GetBlockNum()
-	blk, _ := self.blockPool.getSealedBlock(msg.GetBlockNum() - 1)
+	blk, prevBlkHash := self.blockPool.getSealedBlock(msg.GetBlockNum() - 1)
 	if blk == nil {
 		log.Errorf("BlockProposal failed to GetPreBlock:%d", (msg.GetBlockNum() - 1))
 		return
 	}
+
+	msgPrevBlkHash := msg.Block.getPrevBlockHash()
+	if prevBlkHash != msgPrevBlkHash {
+		log.Errorf("BlockPrposalMessage check blocknum:%d,prevhash:%s,msg prevhash:%s", msg.GetBlockNum(), hex.EncodeToString(prevBlkHash[:4]), hex.EncodeToString(msgPrevBlkHash[:4]))
+		return
+	}
+	cfg := vconfig.ChainConfig{}
+	if blk.getNewChainConfig() != nil {
+		cfg = *blk.getNewChainConfig()
+		if cfg.Hash() != self.config.Hash() {
+			log.Errorf("processProposalMsg chainconfig unqeual to blockinfo cfg,view:(%d,%d),N:(%d,%d),C:(%d,%d),BlockMsgDelay:(%d,%d),HashMsgDelay:(%d,%d),PeerHandshakeTimeout:(%d,%d),posTable:(%v,%v),MaxBlockChangeView:(%d,%d)", cfg.View, self.config.View, cfg.N, self.config.N, cfg.C,
+				self.config.C, cfg.BlockMsgDelay, self.config.BlockMsgDelay, cfg.HashMsgDelay, self.config.HashMsgDelay, cfg.PeerHandshakeTimeout, self.config.PeerHandshakeTimeout, cfg.PosTable, self.config.PosTable, cfg.MaxBlockChangeView, self.config.MaxBlockChangeView)
+			return
+		}
+	}
+
 	prevBlockTimestamp := blk.Block.Header.Timestamp
 	currentBlockTimestamp := msg.Block.Block.Header.Timestamp
 	if currentBlockTimestamp <= prevBlockTimestamp || currentBlockTimestamp > uint32(time.Now().Add(time.Minute*10).Unix()) {
 		log.Errorf("BlockPrposalMessage check  blocknum:%d,prevBlockTimestamp:%d,currentBlockTimestamp:%d", msg.GetBlockNum(), prevBlockTimestamp, currentBlockTimestamp)
 		return
 	}
+
+	// verify VRF
+	proposerPk := self.peerPool.GetPeerPubKey(msg.Block.getProposer())
+	if proposerPk == nil {
+		log.Errorf("server %d failed to get proposer %d pk of block %d",
+			self.Index, msg.Block.getProposer(), msgBlkNum)
+		return
+	}
+	if err := verifyVrf(proposerPk, msgBlkNum, blk.getVrfValue(), msg.Block.getVrfValue(), msg.Block.getVrfProof()); err != nil {
+		log.Errorf("server %d failed to verify vrf of block %d proposal from %d",
+			self.Index, msgBlkNum, msg.Block.getProposer())
+		return
+	}
+
 	txs := msg.Block.Block.Transactions
-	if len(txs) > 0 {
+	if len(txs) > 0 && self.nonSystxs(txs, msgBlkNum) {
 		height := uint32(msgBlkNum) - 1
 		start, end := self.incrValidator.BlockRange()
 
@@ -1719,19 +1751,18 @@ func (self *Server) processTimerEvent(evt *TimerEvent) error {
 		self.heartbeat()
 
 	case EventTxPool:
-		blockNum := self.GetCurrentBlockNo()
 		self.timer.stopTxTicker(evt.blockNum)
-		if self.completedBlockNum+1 == self.currentBlockNum {
-			txpool := self.poolActor.GetTxnPool(true, self.validHeight(blockNum))
+		if self.completedBlockNum+1 == evt.blockNum {
+			txpool := self.poolActor.GetTxnPool(true, self.validHeight(evt.blockNum))
 			if len(txpool) != 0 {
-				self.timer.CancelTxBlockTimeout(blockNum)
-				self.startNewProposal(blockNum)
+				self.timer.CancelTxBlockTimeout(evt.blockNum)
+				self.startNewProposal(evt.blockNum)
 			} else {
 				//reset timer, continue waiting txs from txnpool
-				self.timer.startTxTicker(blockNum)
+				self.timer.startTxTicker(evt.blockNum)
 			}
 		} else {
-			self.timer.startTxTicker(blockNum)
+			self.timer.startTxTicker(evt.blockNum)
 		}
 	case EventTxBlockTimeout:
 		self.timer.stopTxTicker(evt.blockNum)
@@ -1869,7 +1900,7 @@ func (self *Server) commitBlock(proposal *blockProposalMsg, forEmpty bool) error
 		return fmt.Errorf("failed to construct commit msg: %s", err)
 	}
 
-	// set the block as commited-block
+	// set the block as committed-block
 	if err := self.blockPool.setProposalCommitted(proposal, forEmpty); err != nil {
 		return fmt.Errorf("failed to set proposal as committed: %s", err)
 	}
@@ -2009,24 +2040,20 @@ func (self *Server) msgSendLoop() {
 
 //creategovernaceTransaction invoke governance native contract commit_pos
 func (self *Server) creategovernaceTransaction(blkNum uint32) *types.Transaction {
-	init := states.Contract{
-		Address: nutils.GovernanceContractAddress,
-		Method:  gover.COMMIT_DPOS,
-	}
-	bf := new(bytes.Buffer)
-	init.Serialize(bf)
-	vmCode := stypes.VmCode{
-		VmType: stypes.Native,
-		Code:   bf.Bytes(),
-	}
-	tx := utils.NewInvokeTransaction(vmCode)
+	tx := utils.BuildNativeTransaction(nutils.GovernanceContractAddress, gover.COMMIT_DPOS, []byte{})
 	tx.Nonce = blkNum
 	return tx
 }
 
 //checkNeedUpdateChainConfig use blockcount
 func (self *Server) checkNeedUpdateChainConfig(blockNum uint32) bool {
-	if blockNum%self.config.MaxBlockChangeView == 0 {
+	prevBlk, _ := self.blockPool.getSealedBlock(blockNum - 1)
+	if prevBlk == nil {
+		log.Errorf("failed to get prevBlock (%d)", blockNum-1)
+		return false
+	}
+	lastConfigBlkNum := prevBlk.getLastConfigBlockNum()
+	if (blockNum - lastConfigBlkNum) >= self.config.MaxBlockChangeView {
 		return true
 	}
 	return false
@@ -2034,7 +2061,7 @@ func (self *Server) checkNeedUpdateChainConfig(blockNum uint32) bool {
 
 //checkUpdateChainConfig query leveldb check is force update
 func (self *Server) checkUpdateChainConfig() bool {
-	force, err := self.chainStore.isUpdate(self.config.View)
+	force, err := isUpdate(self.config.View)
 	if err != nil {
 		log.Errorf("checkUpdateChainConfig err:%s", err)
 		return false
@@ -2055,6 +2082,20 @@ func (self *Server) validHeight(blkNum uint32) uint32 {
 	return validHeight
 }
 
+func (self *Server) nonSystxs(sysTxs []*types.Transaction, blkNum uint32) bool {
+	if self.checkNeedUpdateChainConfig(blkNum) && len(sysTxs) == 1 {
+		invoke := sysTxs[0].Payload.(*payload.InvokeCode)
+		if invoke == nil {
+			log.Errorf("nonSystxs invoke is nil,blocknum:%d", blkNum)
+			return true
+		}
+		if bytes.Compare(invoke.Code, ninit.COMMIT_DPOS_BYTES) == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func (self *Server) makeProposal(blkNum uint32, forEmpty bool) error {
 	if blkNum < self.GetCurrentBlockNo() {
 		return fmt.Errorf("server %d ignore deprecatd blk proposal %d, current %d",
@@ -2068,17 +2109,18 @@ func (self *Server) makeProposal(blkNum uint32, forEmpty bool) error {
 	//check need upate chainconfig
 	cfg := &vconfig.ChainConfig{}
 	cfg = nil
-	if self.checkNeedUpdateChainConfig(self.currentBlockNum) || self.checkUpdateChainConfig() {
-		chainconfig, err := self.getChainConfig()
+	if self.checkNeedUpdateChainConfig(blkNum) || self.checkUpdateChainConfig() {
+		chainconfig, err := getChainConfig(blkNum)
 		if err != nil {
 			return fmt.Errorf("getChainConfig failed:%s", err)
 		}
-		self.config = chainconfig
-		cfg = self.config
 		//add transaction invoke governance native commit_pos contract
-		if self.checkNeedUpdateChainConfig(self.currentBlockNum) {
+		if self.checkNeedUpdateChainConfig(blkNum) {
 			sysTxs = append(sysTxs, self.creategovernaceTransaction(blkNum))
+			chainconfig.View++
 		}
+		forEmpty = true
+		cfg = chainconfig
 	}
 	if self.nonConsensusNode() {
 		return fmt.Errorf("%d quit consensus node", self.Index)

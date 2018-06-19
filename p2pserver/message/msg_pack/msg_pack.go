@@ -21,89 +21,65 @@ package msgpack
 import (
 	"time"
 
-	"github.com/ontio/ontology-crypto/keypair"
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/config"
 	"github.com/ontio/ontology/common/log"
 	ct "github.com/ontio/ontology/core/types"
 	msgCommon "github.com/ontio/ontology/p2pserver/common"
+	"github.com/ontio/ontology/p2pserver/dht/types"
 	mt "github.com/ontio/ontology/p2pserver/message/types"
 	p2pnet "github.com/ontio/ontology/p2pserver/net/protocol"
+	"net"
 )
 
 //Peer address package
-func NewAddrs(nodeAddrs []msgCommon.PeerAddr) ([]byte, error) {
+func NewAddrs(nodeAddrs []msgCommon.PeerAddr) mt.Message {
 	var addr mt.Addr
 	addr.NodeAddrs = nodeAddrs
 
-	m, err := addr.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
+	return &addr
 }
 
 //Peer address request package
-func NewAddrReq() ([]byte, error) {
+func NewAddrReq() mt.Message {
 	var msg mt.AddrReq
-
-	buf, err := msg.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	return buf, err
+	return &msg
 }
 
 ///block package
-func NewBlock(bk *ct.Block) ([]byte, error) {
+func NewBlock(bk *ct.Block) mt.Message {
 	log.Debug()
 	var blk mt.Block
 	blk.Blk = *bk
 
-	m, err := blk.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
+	return &blk
 }
 
 //blk hdr package
-func NewHeaders(headers []ct.Header) ([]byte, error) {
+func NewHeaders(headers []*ct.Header) mt.Message {
 	var blkHdr mt.BlkHeader
-	blkHdr.Cnt = uint32(len(headers))
 	blkHdr.BlkHdr = headers
 
-	m, err := blkHdr.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
+	return &blkHdr
 }
 
 //blk hdr req package
-func NewHeadersReq(curHdrHash common.Uint256) ([]byte, error) {
+func NewHeadersReq(curHdrHash common.Uint256) mt.Message {
 	var h mt.HeadersReq
-	h.P.Len = 1
+	h.Len = 1
 	buf := curHdrHash
-	copy(h.P.HashEnd[:], buf[:])
+	copy(h.HashEnd[:], buf[:])
 
-	m, err := h.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	return m, err
+	return &h
 }
 
 ////Consensus info package
-func NewConsensus(cp *mt.ConsensusPayload) ([]byte, error) {
+func NewConsensus(cp *mt.ConsensusPayload) mt.Message {
 	log.Debug()
 	var cons mt.Consensus
 	cons.Cons = *cp
-	m, err := cons.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
+
+	return &cons
 }
 
 //InvPayload
@@ -116,86 +92,63 @@ func NewInvPayload(invType common.InventoryType, count uint32, msg []byte) *mt.I
 }
 
 //Inv request package
-func NewInv(invPayload *mt.InvPayload) ([]byte, error) {
+func NewInv(invPayload *mt.InvPayload) mt.Message {
 	var inv mt.Inv
 	inv.P.Blk = invPayload.Blk
 	inv.P.InvType = invPayload.InvType
 	inv.P.Cnt = invPayload.Cnt
 
-	m, err := inv.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
+	return &inv
 }
 
 //NotFound package
-func NewNotFound(hash common.Uint256) ([]byte, error) {
+func NewNotFound(hash common.Uint256) mt.Message {
 	log.Debug()
 	var notFound mt.NotFound
 	notFound.Hash = hash
 
-	m, err := notFound.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
+	return &notFound
 }
 
 //ping msg package
-func NewPingMsg(height uint64) ([]byte, error) {
+func NewPingMsg(height uint64) *mt.Ping {
 	log.Debug()
 	var ping mt.Ping
 	ping.Height = uint64(height)
 
-	m, err := ping.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
+	return &ping
 }
 
 //pong msg package
-func NewPongMsg(height uint64) ([]byte, error) {
+func NewPongMsg(height uint64) *mt.Pong {
 	log.Debug()
 	var pong mt.Pong
 	pong.Height = uint64(height)
 
-	m, err := pong.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
+	return &pong
 }
 
 //Transaction package
-func NewTxn(txn *ct.Transaction) ([]byte, error) {
+func NewTxn(txn *ct.Transaction) mt.Message {
 	log.Debug()
 	var trn mt.Trn
-	trn.Txn = *txn
+	trn.Txn = txn
 
-	m, err := trn.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
+	return &trn
 }
 
 //version ack package
-func NewVerAck(isConsensus bool) ([]byte, error) {
+func NewVerAck(isConsensus bool) mt.Message {
 	var verAck mt.VerACK
 	verAck.IsConsensus = isConsensus
 
-	m, err := verAck.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
+	return &verAck
 }
 
-//VersionPayload package
-func NewVersionPayload(n p2pnet.P2P, isCons bool, height uint32) mt.VersionPayload {
-	vpl := mt.VersionPayload{
+//Version package
+func NewVersion(n p2pnet.P2P, isCons bool, height uint32) mt.Message {
+	var version mt.Version
+	version.P = mt.VersionPayload{
 		Version:      n.GetVersion(),
 		Services:     n.GetServices(),
 		SyncPort:     n.GetSyncPort(),
@@ -203,135 +156,104 @@ func NewVersionPayload(n p2pnet.P2P, isCons bool, height uint32) mt.VersionPaylo
 		Nonce:        n.GetID(),
 		IsConsensus:  isCons,
 		HttpInfoPort: n.GetHttpInfoPort(),
+		StartHeight:  uint64(height),
+		TimeStamp:    time.Now().UnixNano(),
 	}
 
-	vpl.StartHeight = uint64(height)
 	if n.GetRelay() {
-		vpl.Relay = 1
+		version.P.Relay = 1
 	} else {
-		vpl.Relay = 0
+		version.P.Relay = 0
 	}
 	if config.DefConfig.P2PNode.HttpInfoPort > 0 {
-		vpl.Cap[msgCommon.HTTP_INFO_FLAG] = 0x01
+		version.P.Cap[msgCommon.HTTP_INFO_FLAG] = 0x01
 	} else {
-		vpl.Cap[msgCommon.HTTP_INFO_FLAG] = 0x00
+		version.P.Cap[msgCommon.HTTP_INFO_FLAG] = 0x00
 	}
-
-	vpl.UserAgent = 0x00
-	vpl.TimeStamp = uint32(time.Now().UTC().UnixNano())
-
-	return vpl
-}
-
-//version msg package
-func NewVersion(vpl mt.VersionPayload, pk keypair.PublicKey) ([]byte, error) {
-	log.Debug()
-	var version mt.Version
-	version.P = vpl
-	version.PK = pk
-	log.Debug("new version msg.pk is ", version.PK)
-
-	m, err := version.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
+	return &version
 }
 
 //transaction request package
-func NewTxnDataReq(hash common.Uint256) ([]byte, error) {
+func NewTxnDataReq(hash common.Uint256) mt.Message {
 	var dataReq mt.DataReq
 	dataReq.DataType = common.TRANSACTION
 	dataReq.Hash = hash
 
-	buf, err := dataReq.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	return buf, nil
+	return &dataReq
 }
 
 //block request package
-func NewBlkDataReq(hash common.Uint256) ([]byte, error) {
+func NewBlkDataReq(hash common.Uint256) mt.Message {
 	var dataReq mt.DataReq
 	dataReq.DataType = common.BLOCK
 	dataReq.Hash = hash
 
-	sendBuf, err := dataReq.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	return sendBuf, nil
+	return &dataReq
 }
 
 //consensus request package
-func NewConsensusDataReq(hash common.Uint256) ([]byte, error) {
+func NewConsensusDataReq(hash common.Uint256) mt.Message {
 	var dataReq mt.DataReq
 	dataReq.DataType = common.CONSENSUS
 	dataReq.Hash = hash
-	buf, err := dataReq.Serialization()
-	if err != nil {
-		return nil, err
-	}
-	return buf, nil
-}
 
-func NewDHTPingPayload() mt.DHTPingPayload {
-	return mt.DHTPingPayload{}
+	return &dataReq
 }
 
 //DHT ping message packet
-func NewDHTPing(p mt.DHTPingPayload) ([]byte, error) {
-	var ping mt.DHTPing
-	ping.P = p
+func NewDHTPing(nodeID types.NodeID, udpPort, tcpPort uint16, ip net.IP, destAddr *net.UDPAddr) mt.Message {
+	ping := new(mt.DHTPing)
+	copy(ping.FromID[:], nodeID[:])
 
-	buf, err := ping.Serialization()
-	if err != nil {
-		log.Error("Error Convert net message ", err.Error())
-		return nil, err
-	}
+	ping.SrcEndPoint.UDPPort = udpPort
+	ping.SrcEndPoint.TCPPort = tcpPort
 
-	return buf, nil
+	copy(ping.SrcEndPoint.Addr[:], ip[:16])
+
+	ping.DestEndPoint.UDPPort = uint16(destAddr.Port)
+
+	destIP := destAddr.IP.To16()
+	copy(ping.DestEndPoint.Addr[:], destIP[:16])
+
+	return ping
 }
 
 //DHT pong message packet
-func NewDHTPong(p mt.DHTPongPayload) ([]byte, error) {
-	var pong mt.DHTPong
-	pong.P = p
+func NewDHTPong(nodeID types.NodeID, udpPort, tcpPort uint16, ip net.IP, destAddr *net.UDPAddr) mt.Message {
+	pong := new(mt.DHTPong)
+	copy(pong.FromID[:], nodeID[:])
+	pong.SrcEndPoint.UDPPort = udpPort
+	pong.SrcEndPoint.TCPPort = tcpPort
 
-	buf, err := pong.Serialization()
-	if err != nil {
-		log.Error("Error Convert net message ", err.Error())
-		return nil, err
-	}
+	copy(pong.SrcEndPoint.Addr[:], ip[:16])
 
-	return buf, nil
+	pong.DestEndPoint.UDPPort = uint16(destAddr.Port)
+	destIP := destAddr.IP.To16()
+	copy(pong.DestEndPoint.Addr[:], destIP[:16])
+
+	return pong
 }
 
 //DHT findNode message packet
-func NewFindNode(p mt.FindNodePayload) ([]byte, error) {
-	var findNode mt.FindNode
-	findNode.P = p
-
-	buf, err := findNode.Serialization()
-	if err != nil {
-		log.Error("Error Convert net message ", err.Error())
-		return nil, err
+func NewFindNode(nodeID types.NodeID, targetID types.NodeID) mt.Message {
+	findNode := &mt.FindNode{
+		FromID:   nodeID,
+		TargetID: targetID,
 	}
 
-	return buf, nil
+	return findNode
 }
 
 //DHT neighbors message packet
-func NewNeighbors(p mt.NeighborsPayload) ([]byte, error) {
-	var neighbors mt.Neighbors
-	neighbors.P = p
-
-	buf, err := neighbors.Serialization()
-	if err != nil {
-		log.Error("Error Convert net message ", err.Error())
-		return nil, err
+func NewNeighbors(nodeID types.NodeID, nodes []*types.Node) mt.Message {
+	neighbors := &mt.Neighbors{
+		FromID: nodeID,
+		Nodes:  make([]types.Node, 0, len(nodes)),
+	}
+	for _, node := range nodes {
+		log.Infof("ReturnNeightbors: %s:%d", node.IP, node.UDPPort)
+		neighbors.Nodes = append(neighbors.Nodes, *node)
 	}
 
-	return buf, nil
+	return neighbors
 }

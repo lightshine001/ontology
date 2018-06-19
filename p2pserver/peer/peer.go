@@ -23,17 +23,15 @@ import (
 	"fmt"
 	"net"
 	"runtime"
-	"strings"
 	"sync/atomic"
 	"time"
-
 	"github.com/fatih/set"
 
-	"github.com/ontio/ontology-crypto/keypair"
 	comm "github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/p2pserver/common"
 	conn "github.com/ontio/ontology/p2pserver/link"
+	"github.com/ontio/ontology/p2pserver/message/types"
 )
 
 // PeerCom provides the basic information of a peer
@@ -46,7 +44,6 @@ type PeerCom struct {
 	syncPort     uint16
 	consPort     uint16
 	height       uint64
-	publicKey    keypair.PublicKey
 }
 
 // SetID sets a peer's id
@@ -129,16 +126,6 @@ func (this *PeerCom) GetHeight() uint64 {
 	return this.height
 }
 
-// SetPubKey sets a peer's public key
-func (this *PeerCom) SetPubKey(pubKey keypair.PublicKey) {
-	this.publicKey = pubKey
-}
-
-// GetPubKey returns a peer's public key
-func (this *PeerCom) GetPubKey() keypair.PublicKey {
-	return this.publicKey
-}
-
 //Peer represent the node in p2p
 type Peer struct {
 	base      PeerCom
@@ -171,15 +158,13 @@ func NewPeer() *Peer {
 	}
 	p.SyncLink = conn.NewLink()
 	p.ConsLink = conn.NewLink()
-
 	runtime.SetFinalizer(p, rmPeer)
-	go p.backend()
 	return p
 }
 
 //rmPeer print a debug log when peer be finalized by system
 func rmPeer(p *Peer) {
-	log.Debug(fmt.Sprintf("Remove unused peer: 0x%0x", p.GetID()))
+	log.Debug(fmt.Sprintf("Remove unused peer: %d", p.GetID()))
 }
 
 //DumpInfo print all information of peer
@@ -187,7 +172,7 @@ func (this *Peer) DumpInfo() {
 	log.Info("Node info:")
 	log.Info("\t syncState = ", this.syncState)
 	log.Info("\t consState = ", this.consState)
-	log.Info("\t id = 0x%x", this.GetID())
+	log.Info("\t id = ", this.GetID())
 	log.Info("\t addr = ", this.SyncLink.GetAddr())
 	log.Info("\t cap = ", this.cap)
 	log.Info("\t version = ", this.GetVersion())
@@ -196,16 +181,6 @@ func (this *Peer) DumpInfo() {
 	log.Info("\t consPort = ", this.GetConsPort())
 	log.Info("\t relay = ", this.GetRelay())
 	log.Info("\t height = ", this.GetHeight())
-}
-
-//SetBookKeeperAddr set pubKey to peer
-func (this *Peer) SetBookKeeperAddr(pubKey keypair.PublicKey) {
-	this.base.SetPubKey(pubKey)
-}
-
-//GetPubKey return publickey of peer
-func (this *Peer) GetPubKey() keypair.PublicKey {
-	return this.base.GetPubKey()
 }
 
 //GetVersion return peer`s version
@@ -269,17 +244,17 @@ func (this *Peer) SetConsPort(port uint16) {
 }
 
 //SendToSync call sync link to send buffer
-func (this *Peer) SendToSync(buf []byte) {
+func (this *Peer) SendToSync(msg types.Message) {
 	if this.SyncLink != nil && this.SyncLink.Valid() {
-		this.SyncLink.Tx(buf)
+		this.SyncLink.Tx(msg)
 	}
 
 }
 
 //SendToCons call consensus link to send buffer
-func (this *Peer) SendToCons(buf []byte) {
+func (this *Peer) SendToCons(msg types.Message) {
 	if this.ConsLink != nil && this.ConsLink.Valid() {
-		this.ConsLink.Tx(buf)
+		this.ConsLink.Tx(msg)
 	}
 }
 
@@ -335,7 +310,7 @@ func (this *Peer) GetAddr() string {
 //GetAddr16 return peer`s sync link address in []byte
 func (this *Peer) GetAddr16() ([16]byte, error) {
 	var result [16]byte
-	addrIp, err := parseIPAddr(this.GetAddr())
+	addrIp, err := common.ParseIPAddr(this.GetAddr())
 	if err != nil {
 		return result, err
 	}
@@ -350,21 +325,21 @@ func (this *Peer) GetAddr16() ([16]byte, error) {
 }
 
 //AttachSyncChan set msg chan to sync link
-func (this *Peer) AttachSyncChan(msgchan chan *common.MsgPayload) {
+func (this *Peer) AttachSyncChan(msgchan chan *types.MsgPayload) {
 	this.SyncLink.SetChan(msgchan)
 }
 
 //AttachConsChan set msg chan to consensus link
-func (this *Peer) AttachConsChan(msgchan chan *common.MsgPayload) {
+func (this *Peer) AttachConsChan(msgchan chan *types.MsgPayload) {
 	this.ConsLink.SetChan(msgchan)
 }
 
 //Send transfer buffer by sync or cons link
-func (this *Peer) Send(buf []byte, isConsensus bool) error {
+func (this *Peer) Send(msg types.Message, isConsensus bool) error {
 	if isConsensus && this.ConsLink.Valid() {
-		return this.ConsLink.Tx(buf)
+		return this.ConsLink.Tx(msg)
 	}
-	return this.SyncLink.Tx(buf)
+	return this.SyncLink.Tx(msg)
 }
 
 //SetHttpInfoState set peer`s httpinfo state
@@ -424,14 +399,4 @@ func (this *Peer) UpdateInfo(t time.Time, version uint32, services uint64,
 		this.base.SetRelay(true)
 	}
 	this.SetHeight(uint64(height))
-}
-
-//parseIPAddr return ip address
-func parseIPAddr(s string) (string, error) {
-	i := strings.Index(s, ":")
-	if i < 0 {
-		log.Warn("split ip address error")
-		return s, errors.New("split ip address error")
-	}
-	return s[:i], nil
 }

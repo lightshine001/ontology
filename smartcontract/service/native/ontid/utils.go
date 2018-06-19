@@ -18,11 +18,15 @@
 package ontid
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"math/big"
 
+	"github.com/itchyny/base58-go"
 	"github.com/ontio/ontology-crypto/keypair"
-	cmn "github.com/ontio/ontology/common"
+	com "github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/core/states"
 	"github.com/ontio/ontology/core/store/common"
 	"github.com/ontio/ontology/core/types"
@@ -58,7 +62,6 @@ func encodeID(id []byte) ([]byte, error) {
 	}
 	enc := []byte{byte(length)}
 	enc = append(enc, id...)
-	enc = append(utils.OntIDContractAddress[:], enc...)
 	return enc, nil
 }
 
@@ -69,9 +72,40 @@ func decodeID(data []byte) ([]byte, error) {
 	return data[1:], nil
 }
 
-func setRecovery(srvc *native.NativeService, encID, recovery []byte) error {
+func verifyID(id []byte) bool {
+	if len(id) < 9 {
+		return false
+	}
+	if string(id[0:8]) != "did:ont:" {
+		return false
+	}
+	buf, err := base58.BitcoinEncoding.Decode(id[8:])
+	if err != nil {
+		return false
+	}
+	bi, ok := new(big.Int).SetString(string(buf), 10)
+	if !ok || bi == nil {
+		return false
+	}
+	buf = bi.Bytes()
+	// 1 byte version + 20 byte hash + 4 byte checksum
+	if len(buf) != 25 {
+		return false
+	}
+	pos := len(buf) - 4
+	data := buf[:pos]
+	checksum := buf[pos:]
+	sum := sha256.Sum256(data)
+	sum = sha256.Sum256(sum[:])
+	if !bytes.Equal(sum[0:4], checksum) {
+		return false
+	}
+	return true
+}
+
+func setRecovery(srvc *native.NativeService, encID []byte, recovery com.Address) error {
 	key := append(encID, FIELD_RECOVERY)
-	val := &states.StorageItem{Value: recovery}
+	val := &states.StorageItem{Value: recovery[:]}
 	srvc.CloneCache.Add(common.ST_STORAGE, key, val)
 	return nil
 }
@@ -98,7 +132,7 @@ func checkWitness(srvc *native.NativeService, key []byte) error {
 	}
 
 	// try as if key is an address
-	addr, err := cmn.AddressParseFromBytes(key)
+	addr, err := com.AddressParseFromBytes(key)
 	if srvc.ContextRef.CheckWitness(addr) {
 		return nil
 	}

@@ -41,6 +41,7 @@ import (
 	"github.com/ontio/ontology/common/config"
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/consensus"
+	"github.com/ontio/ontology/core/genesis"
 	"github.com/ontio/ontology/core/ledger"
 	"github.com/ontio/ontology/events"
 	hserver "github.com/ontio/ontology/http/base/actor"
@@ -64,19 +65,24 @@ func setupAPP() *cli.App {
 	app := cli.NewApp()
 	app.Usage = "Ontology CLI"
 	app.Action = startOntology
-	app.Version = "0.8.0"
+	app.Version = "0.9"
 	app.Copyright = "Copyright in 2018 The Ontology Authors"
 	app.Commands = []cli.Command{
 		cmd.AccountCommand,
 		cmd.InfoCommand,
 		cmd.AssetCommand,
 		cmd.ContractCommand,
+		cmd.ExportCommand,
 	}
 	app.Flags = []cli.Flag{
 		//common setting
 		utils.ConfigFlag,
 		utils.LogLevelFlag,
 		utils.DisableEventLogFlag,
+		utils.DataDirFlag,
+		utils.ImportEnableFlag,
+		utils.ImportHeightFlag,
+		utils.ImportFileFlag,
 		//account setting
 		utils.WalletFileFlag,
 		utils.AccountAddressFlag,
@@ -87,6 +93,9 @@ func setupAPP() *cli.App {
 		utils.TransactionGasPriceFlag,
 		utils.TransactionGasLimitFlag,
 		//p2p setting
+		utils.ReservedPeersOnlyFlag,
+		utils.ReservedPeersFileFlag,
+		utils.NetworkIdFlag,
 		utils.NodePortFlag,
 		utils.ConsensusPortFlag,
 		utils.DualPortSupportFlag,
@@ -141,6 +150,11 @@ func startOntology(ctx *cli.Context) {
 		return
 	}
 	defer ldg.Close()
+	err = importBlocks(ctx)
+	if err != nil {
+		log.Errorf("importBlocks error:%s", err)
+		return
+	}
 	txpool, err := initTxPool(ctx)
 	if err != nil {
 		log.Errorf("initTxPool error:%s", err)
@@ -218,7 +232,15 @@ func initLedger(ctx *cli.Context) (*ledger.Ledger, error) {
 	events.Init() //Init event hub
 
 	var err error
-	ledger.DefLedger, err = ledger.NewLedger()
+	dbDir := config.DefConfig.Common.DataDir + string(os.PathSeparator) + config.DefConfig.P2PNode.NetworkName
+
+	if config.DefConfig.Genesis.ConsensusType == config.CONSENSUS_TYPE_SOLO {
+		err = os.RemoveAll(dbDir)
+		if err != nil {
+			log.Warnf("InitLedger remove:%s error:%s", dbDir, err)
+		}
+	}
+	ledger.DefLedger, err = ledger.NewLedger(dbDir)
 	if err != nil {
 		return nil, fmt.Errorf("NewLedger error:%s", err)
 	}
@@ -226,7 +248,12 @@ func initLedger(ctx *cli.Context) (*ledger.Ledger, error) {
 	if err != nil {
 		return nil, fmt.Errorf("GetBookkeepers error:%s", err)
 	}
-	err = ledger.DefLedger.Init(bookKeepers)
+	genesisConfig := config.DefConfig.Genesis
+	genesisBlock, err := genesis.BuildGenesisBlock(bookKeepers, genesisConfig)
+	if err != nil {
+		return nil, fmt.Errorf("genesisBlock error %s", err)
+	}
+	err = ledger.DefLedger.Init(bookKeepers, genesisBlock)
 	if err != nil {
 		return nil, fmt.Errorf("Init ledger error:%s", err)
 	}
@@ -242,6 +269,8 @@ func initTxPool(ctx *cli.Context) (*proc.TXPoolServer, error) {
 	}
 	stlValidator, _ := stateless.NewValidator("stateless_validator")
 	stlValidator.Register(txPoolServer.GetPID(tc.VerifyRspActor))
+	stlValidator2, _ := stateless.NewValidator("stateless_validator2")
+	stlValidator2.Register(txPoolServer.GetPID(tc.VerifyRspActor))
 	stfValidator, _ := stateful.NewValidator("stateful_validator")
 	stfValidator.Register(txPoolServer.GetPID(tc.VerifyRspActor))
 
@@ -346,7 +375,7 @@ func initLocalRpc(ctx *cli.Context) error {
 }
 
 func initRestful(ctx *cli.Context) {
-	if !ctx.GlobalBool(utils.GetFlagName(utils.RestfulEnableFlag)) {
+	if !config.DefConfig.Restful.EnableHttpRestful {
 		return
 	}
 	go restful.StartServer()
@@ -355,7 +384,7 @@ func initRestful(ctx *cli.Context) {
 }
 
 func initWs(ctx *cli.Context) {
-	if !ctx.GlobalBool(utils.GetFlagName(utils.WsEnabledFlag)) {
+	if !config.DefConfig.Ws.EnableHttpWs {
 		return
 	}
 	websocket.StartServer()
@@ -382,6 +411,18 @@ func initCliSvr(ctx *cli.Context, acc *account.Account) {
 	log.Infof("Cli rpc server init success")
 }
 
+func importBlocks(ctx *cli.Context) error {
+	if !ctx.GlobalBool(utils.GetFlagName(utils.ImportEnableFlag)) {
+		return nil
+	}
+	importFile := ctx.GlobalString(utils.GetFlagName(utils.ImportFileFlag))
+	if importFile == "" {
+		return fmt.Errorf("missing import file argument")
+	}
+	height := ctx.GlobalUint(utils.GetFlagName(utils.ImportHeightFlag))
+	return utils.ImportBlocks(importFile, uint32(height))
+}
+
 func logCurrBlockHeight() {
 	ticker := time.NewTicker(config.DEFAULT_GEN_BLOCK_TIME * time.Second)
 	for {
@@ -391,7 +432,7 @@ func logCurrBlockHeight() {
 			isNeedNewFile := log.CheckIfNeedNewFile()
 			if isNeedNewFile {
 				log.ClosePrintLog()
-				log.Init(log.PATH, os.Stdout)
+				log.InitLog(int(config.DefConfig.Common.LogLevel), log.PATH, log.Stdout)
 			}
 		}
 	}

@@ -27,7 +27,9 @@ import (
 
 	"github.com/ontio/ontology-eventbus/actor"
 	"github.com/ontio/ontology/common"
+	"github.com/ontio/ontology/common/config"
 	"github.com/ontio/ontology/common/log"
+	"github.com/ontio/ontology/core/genesis"
 	"github.com/ontio/ontology/core/ledger"
 	"github.com/ontio/ontology/core/types"
 	tc "github.com/ontio/ontology/txnpool/common"
@@ -46,8 +48,7 @@ func init() {
 	topic = "TXN"
 
 	tx = &types.Transaction{
-		Version:    0,
-		Attributes: []*types.TxAttribute{},
+		Version: 0,
 	}
 
 	tempStr := "3369930accc1ddd067245e8edadcd9bea207ba5e1753ac18a51df77a343bfe92"
@@ -69,8 +70,29 @@ func startActor(obj interface{}) *actor.PID {
 func Test_RCV(t *testing.T) {
 	var s *tp.TXPoolServer
 	var wg sync.WaitGroup
+	var err error
+	ledger.DefLedger, err = ledger.NewLedger(config.DEFAULT_DATA_DIR)
+	if err != nil {
+		t.Error("failed  to new ledger")
+		return
+	}
 
-	ledger.DefLedger, _ = ledger.NewLedger()
+	bookKeepers, err := config.DefConfig.GetBookkeepers()
+	if err != nil {
+		t.Error("failed to get bookkeepers")
+		return
+	}
+	genesisConfig := config.DefConfig.Genesis
+	genesisBlock, err := genesis.BuildGenesisBlock(bookKeepers, genesisConfig)
+	if err != nil {
+		t.Error("failed to build genesis block")
+		return
+	}
+	err = ledger.DefLedger.Init(bookKeepers, genesisBlock)
+	if err != nil {
+		t.Error("failed to initialize default ledger")
+		return
+	}
 
 	// Start txnpool server to receive msgs from p2p, consensus and valdiators
 	s = tp.NewTxPoolServer(tc.MAX_WORKER_NUM)

@@ -21,6 +21,7 @@ package neovm
 import (
 	"math/big"
 
+	"github.com/ontio/ontology/errors"
 	"github.com/ontio/ontology/vm/neovm/types"
 )
 
@@ -56,9 +57,34 @@ func opUnpack(e *ExecutionEngine) (VMState, error) {
 }
 
 func opPickItem(e *ExecutionEngine) (VMState, error) {
-	index := PopInt(e)
-	items := PopArray(e)
-	PushData(e, items[index])
+	index := PopStackItem(e)
+	items := PopStackItem(e)
+
+	switch items.(type) {
+	case *types.Array:
+		i := int(index.GetBigInteger().Int64())
+		if i < 0 || i >= len(items.GetArray()) {
+			return FAULT, errors.NewErr("opPickItem invalid array.")
+		}
+		PushData(e, items.GetArray()[i])
+	case *types.Struct:
+		i := int(index.GetBigInteger().Int64())
+		if i < 0 || i >= len(items.GetStruct()) {
+			return FAULT, errors.NewErr("opPickItem invalid array.")
+		}
+		PushData(e, items.GetStruct()[i])
+	case *types.Map:
+		value := items.(*types.Map).TryGetValue(index)
+		//TODO should return a nil type when not exist?
+		if value == nil {
+			return FAULT, errors.NewErr("opPickItem map element not exist.")
+		}
+		PushData(e, value)
+
+	default:
+		return FAULT, errors.NewErr("opPickItem unknown item type.")
+	}
+
 	return NONE, nil
 }
 
@@ -67,9 +93,31 @@ func opSetItem(e *ExecutionEngine) (VMState, error) {
 	if value, ok := newItem.(*types.Struct); ok {
 		newItem = value.Clone()
 	}
-	index := PopInt(e)
-	items := PopArray(e)
-	items[index] = newItem
+
+	index := PopStackItem(e)
+	item := PopStackItem(e)
+
+	switch item.(type) {
+	case *types.Map:
+		item.GetMap()[index] = newItem
+	case *types.Array:
+		items := item.GetArray()
+		i := int(index.GetBigInteger().Int64())
+		if i < 0 || i >= len(items) {
+			return FAULT, errors.NewErr("opSetItem invalid array.")
+		}
+		items[i] = newItem
+	case *types.Struct:
+		items := item.GetStruct()
+		i := int(index.GetBigInteger().Int64())
+		if i < 0 || i >= len(items) {
+			return FAULT, errors.NewErr("opSetItem invalid array.")
+		}
+		items[i] = newItem
+	default:
+		return FAULT, errors.NewErr("opSetItem unknown item type.")
+	}
+
 	return NONE, nil
 }
 
@@ -93,13 +141,23 @@ func opNewStruct(e *ExecutionEngine) (VMState, error) {
 	return NONE, nil
 }
 
+func opNewMap(e *ExecutionEngine) (VMState, error) {
+	PushData(e, types.NewMap())
+	return NONE, nil
+}
+
 func opAppend(e *ExecutionEngine) (VMState, error) {
 	newItem := PopStackItem(e)
 	if value, ok := newItem.(*types.Struct); ok {
 		newItem = value.Clone()
 	}
-	itemArr := PopArray(e)
-	itemArr = append(itemArr, newItem)
+	items := PopStackItem(e)
+	if item, ok := items.(*types.Array); ok {
+		item.Add(newItem)
+	}
+	if item, ok := items.(*types.Struct); ok {
+		item.Add(newItem)
+	}
 	return NONE, nil
 }
 

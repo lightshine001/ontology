@@ -21,13 +21,11 @@ package rpc
 import (
 	"bytes"
 	"encoding/hex"
-	"fmt"
-
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/config"
 	"github.com/ontio/ontology/common/log"
-	"github.com/ontio/ontology/common/serialization"
 	"github.com/ontio/ontology/core/payload"
+	scom "github.com/ontio/ontology/core/store/common"
 	"github.com/ontio/ontology/core/types"
 	ontErrors "github.com/ontio/ontology/errors"
 	bactor "github.com/ontio/ontology/http/base/actor"
@@ -42,7 +40,7 @@ func GetGenerateBlockTime(params []interface{}) map[string]interface{} {
 
 func GetBestBlockHash(params []interface{}) map[string]interface{} {
 	hash := bactor.CurrentBlockHash()
-	return responseSuccess(common.ToHexString(hash.ToArray()))
+	return responseSuccess(hash.ToHexString())
 }
 
 // Input JSON string examples for getblock method as following:
@@ -59,21 +57,14 @@ func GetBlock(params []interface{}) map[string]interface{} {
 	case float64:
 		index := uint32(params[0].(float64))
 		hash = bactor.GetBlockHashFromStore(index)
-		if err != nil {
-			log.Errorf("GetBlock GetBlockHashFromStore Height:%v error:%s", index, err)
-			return responsePack(berr.UNKNOWN_BLOCK, "unknown block")
-		}
 		if hash == common.UINT256_EMPTY {
 			return responsePack(berr.INVALID_PARAMS, "")
 		}
 		// block hash
 	case string:
 		str := params[0].(string)
-		hex, err := hex.DecodeString(str)
+		hash, err = common.Uint256FromHexString(str)
 		if err != nil {
-			return responsePack(berr.INVALID_PARAMS, "")
-		}
-		if err := hash.Deserialize(bytes.NewReader(hex)); err != nil {
 			return responsePack(berr.INVALID_PARAMS, "")
 		}
 	default:
@@ -81,10 +72,6 @@ func GetBlock(params []interface{}) map[string]interface{} {
 	}
 	block, err := bactor.GetBlockFromStore(hash)
 	if err != nil {
-		log.Errorf("GetBlock GetBlockFromStore BlockHash:%x error:%s", hash, err)
-		return responsePack(berr.UNKNOWN_BLOCK, "unknown block")
-	}
-	if block == nil || block.Header == nil {
 		return responsePack(berr.UNKNOWN_BLOCK, "unknown block")
 	}
 	if len(params) >= 2 {
@@ -118,7 +105,10 @@ func GetBlockHash(params []interface{}) map[string]interface{} {
 	case float64:
 		height := uint32(params[0].(float64))
 		hash := bactor.GetBlockHashFromStore(height)
-		return responseSuccess(fmt.Sprintf("%016x", hash))
+		if hash == common.UINT256_EMPTY {
+			return responsePack(berr.INVALID_PARAMS, "")
+		}
+		return responseSuccess(hash.ToHexString())
 	default:
 		return responsePack(berr.INVALID_PARAMS, "")
 	}
@@ -144,6 +134,15 @@ func GetRawMemPool(params []interface{}) map[string]interface{} {
 	}
 	return responseSuccess(txs)
 }
+
+func GetMemPoolTxCount(params []interface{}) map[string]interface{} {
+	count, err := bactor.GetTxnCount()
+	if err != nil {
+		return responsePack(berr.INTERNAL_ERROR, nil)
+	}
+	return responseSuccess(count)
+}
+
 func GetMemPoolTxState(params []interface{}) map[string]interface{} {
 	if len(params) < 1 {
 		return responsePack(berr.INVALID_PARAMS, nil)
@@ -151,25 +150,19 @@ func GetMemPoolTxState(params []interface{}) map[string]interface{} {
 	switch params[0].(type) {
 	case string:
 		str := params[0].(string)
-		hex, err := hex.DecodeString(str)
+		hash, err := common.Uint256FromHexString(str)
 		if err != nil {
 			return responsePack(berr.INVALID_PARAMS, "")
-		}
-		var hash common.Uint256
-		err = hash.Deserialize(bytes.NewReader(hex))
-		if err != nil {
-			return responsePack(berr.INVALID_TRANSACTION, "")
 		}
 		txEntry, err := bactor.GetTxFromPool(hash)
 		if err != nil {
 			return responsePack(berr.UNKNOWN_TRANSACTION, "unknown transaction")
 		}
-		tran := bcomn.TransArryByteToHexString(txEntry.Tx)
 		attrs := []bcomn.TXNAttrInfo{}
 		for _, t := range txEntry.Attrs {
 			attrs = append(attrs, bcomn.TXNAttrInfo{t.Height, int(t.Type), int(t.ErrCode)})
 		}
-		info := bcomn.TXNEntryInfo{*tran, int64(txEntry.Tx.GasPrice), attrs}
+		info := bcomn.TXNEntryInfo{attrs}
 		return responseSuccess(info)
 	default:
 		return responsePack(berr.INVALID_PARAMS, "")
@@ -186,27 +179,15 @@ func GetRawTransaction(params []interface{}) map[string]interface{} {
 	switch params[0].(type) {
 	case string:
 		str := params[0].(string)
-		hex, err := hex.DecodeString(str)
+		hash, err := common.Uint256FromHexString(str)
 		if err != nil {
 			return responsePack(berr.INVALID_PARAMS, "")
 		}
-		var hash common.Uint256
-		err = hash.Deserialize(bytes.NewReader(hex))
-		if err != nil {
-			return responsePack(berr.INVALID_TRANSACTION, "")
-		}
 		t, err := bactor.GetTransaction(hash)
-		if t == nil {
-			return responsePack(berr.UNKNOWN_TRANSACTION, "unknown transaction")
-		}
 		if err != nil {
-			log.Errorf("GetRawTransaction GetTransaction error:%s", err)
 			return responsePack(berr.UNKNOWN_TRANSACTION, "unknown transaction")
 		}
 		tx = t
-		if tx == nil {
-			return responsePack(berr.UNKNOWN_TRANSACTION, "unknown transaction")
-		}
 	default:
 		return responsePack(berr.INVALID_PARAMS, "")
 	}
@@ -238,11 +219,13 @@ func GetStorage(params []interface{}) map[string]interface{} {
 	switch params[0].(type) {
 	case string:
 		str := params[0].(string)
-		hex, err := hex.DecodeString(str)
-		if err != nil {
-			return responsePack(berr.INVALID_PARAMS, "")
+		var err error
+		if len(str) == common.ADDR_LEN*2 {
+			codeHash, err = common.AddressFromHexString(str)
+		} else {
+			codeHash, err = common.AddressFromBase58(str)
 		}
-		if err := codeHash.Deserialize(bytes.NewReader(hex)); err != nil {
+		if err != nil {
 			return responsePack(berr.INVALID_PARAMS, "")
 		}
 	default:
@@ -262,8 +245,7 @@ func GetStorage(params []interface{}) map[string]interface{} {
 	}
 	value, err := bactor.GetStorageItem(codeHash, key)
 	if err != nil {
-		log.Errorf("GetStorage GetStorageItem CodeHash:%x key:%s error:%s", codeHash, key, err)
-		return responsePack(berr.INTERNAL_ERROR, "internal error")
+		return responsePack(berr.INVALID_PARAMS, "")
 	}
 	return responseSuccess(common.ToHexString(value))
 }
@@ -278,7 +260,7 @@ func SendRawTransaction(params []interface{}) map[string]interface{} {
 	switch params[0].(type) {
 	case string:
 		str := params[0].(string)
-		hex, err := hex.DecodeString(str)
+		hex, err := common.HexToBytes(str)
 		if err != nil {
 			return responsePack(berr.INVALID_PARAMS, "")
 		}
@@ -306,7 +288,7 @@ func SendRawTransaction(params []interface{}) map[string]interface{} {
 	default:
 		return responsePack(berr.INVALID_PARAMS, "")
 	}
-	return responseSuccess(common.ToHexString(hash.ToArray()))
+	return responseSuccess(hash.ToHexString())
 }
 
 func GetNodeVersion(params []interface{}) map[string]interface{} {
@@ -325,21 +307,19 @@ func GetContractState(params []interface{}) map[string]interface{} {
 	switch params[0].(type) {
 	case string:
 		str := params[0].(string)
-		hex, err := hex.DecodeString(str)
+		var codeHash common.Address
+		var err error
+		if len(str) == (common.ADDR_LEN * 2) {
+			codeHash, err = common.AddressFromHexString(str)
+		} else {
+			codeHash, err = common.AddressFromBase58(str)
+		}
 		if err != nil {
 			return responsePack(berr.INVALID_PARAMS, "")
 		}
-		var hash common.Address
-		if err := hash.Deserialize(bytes.NewReader(hex)); err != nil {
-			return responsePack(berr.INVALID_PARAMS, "")
-		}
-		c, err := bactor.GetContractStateFromStore(hash)
+		c, err := bactor.GetContractStateFromStore(codeHash)
 		if err != nil {
-			log.Errorf("GetContractState GetContractStateFromStore hash:%x error:%s", hash, err)
-			return responsePack(berr.INTERNAL_ERROR, "internal error")
-		}
-		if c == nil {
-			return responsePack(berr.UNKNWN_CONTRACT, "unknow contract")
+			return responsePack(berr.UNKNOWN_CONTRACT, "unknow contract")
 		}
 		contract = c
 	default:
@@ -373,31 +353,28 @@ func GetSmartCodeEvent(params []interface{}) map[string]interface{} {
 	// block height
 	case float64:
 		height := uint32(params[0].(float64))
-		txs, err := bactor.GetEventNotifyByHeight(height)
+		eventInfos, err := bactor.GetEventNotifyByHeight(height)
 		if err != nil {
+			if err == scom.ErrNotFound {
+				return responseSuccess(nil)
+			}
 			return responsePack(berr.INVALID_PARAMS, "")
 		}
-		var txhexs []string
-		for _, v := range txs {
-			txhexs = append(txhexs, common.ToHexString(v.ToArray()))
+		eInfos := make([]*bcomn.ExecuteNotify, 0, len(eventInfos))
+		for _, eventInfo := range eventInfos {
+			_, notify := bcomn.GetExecuteNotify(eventInfo)
+			eInfos = append(eInfos, &notify)
 		}
-		return responseSuccess(txhexs)
+		return responseSuccess(eInfos)
 		//txhash
 	case string:
 		str := params[0].(string)
-		hex, err := hex.DecodeString(str)
+		hash, err := common.Uint256FromHexString(str)
 		if err != nil {
-			return responsePack(berr.INVALID_PARAMS, "")
-		}
-		var hash common.Uint256
-		if err := hash.Deserialize(bytes.NewReader(hex)); err != nil {
 			return responsePack(berr.INVALID_PARAMS, "")
 		}
 		eventInfo, err := bactor.GetEventNotifyByTxHash(hash)
 		if err != nil {
-			return responsePack(berr.INVALID_PARAMS, "")
-		}
-		if eventInfo == nil {
 			return responsePack(berr.INVALID_TRANSACTION, "")
 		}
 		_, notify := bcomn.GetExecuteNotify(eventInfo)
@@ -417,19 +394,12 @@ func GetBlockHeightByTxHash(params []interface{}) map[string]interface{} {
 	// tx hash
 	case string:
 		str := params[0].(string)
-		hex, err := hex.DecodeString(str)
+		hash, err := common.Uint256FromHexString(str)
 		if err != nil {
 			return responsePack(berr.INVALID_PARAMS, "")
 		}
-		var hash common.Uint256
-		if err := hash.Deserialize(bytes.NewReader(hex)); err != nil {
-			return responsePack(berr.INVALID_PARAMS, "")
-		}
-		height, tx, err := bactor.GetTxnWithHeightByTxHash(hash)
+		height, _, err := bactor.GetTxnWithHeightByTxHash(hash)
 		if err != nil {
-			return responsePack(berr.INVALID_PARAMS, "")
-		}
-		if tx == nil {
 			return responsePack(berr.INVALID_PARAMS, "")
 		}
 		return responseSuccess(height)
@@ -437,21 +407,6 @@ func GetBlockHeightByTxHash(params []interface{}) map[string]interface{} {
 		return responsePack(berr.INVALID_PARAMS, "")
 	}
 	return responsePack(berr.INVALID_PARAMS, "")
-}
-
-func getStoreUint64Value(contractAddress, accountAddress common.Address) (uint64, error) {
-	data, err := bactor.GetStorageItem(contractAddress, accountAddress[:])
-	if err != nil {
-		return 0, fmt.Errorf("GetOntBalanceOf GetStorageItem ont address:%s error:%s", accountAddress.ToBase58(), err)
-	}
-	if len(data) == 0 {
-		return 0, nil
-	}
-	value, err := serialization.ReadUint64(bytes.NewBuffer(data))
-	if err != nil {
-		return 0, fmt.Errorf("serialization.ReadUint64:%x error:%s", data, err)
-	}
-	return value, err
 }
 
 func GetBalance(params []interface{}) map[string]interface{} {
@@ -468,8 +423,7 @@ func GetBalance(params []interface{}) map[string]interface{} {
 	}
 	rsp, err := bcomn.GetBalance(address)
 	if err != nil {
-		log.Errorf("GetBalance address:%s error:%s", addrBase58, err)
-		return responsePack(berr.INTERNAL_ERROR, "")
+		return responsePack(berr.INVALID_PARAMS, "")
 	}
 	return responseSuccess(rsp)
 }
@@ -500,8 +454,7 @@ func GetAllowance(params []interface{}) map[string]interface{} {
 	}
 	rsp, err := bcomn.GetAllowance(asset, fromAddr, toAddr)
 	if err != nil {
-		log.Errorf("GetAllowance %s from:%s to:%s error:%s", asset, fromAddrStr, toAddrStr, err)
-		return responsePack(berr.INTERNAL_ERROR, "")
+		return responsePack(berr.INVALID_PARAMS, "")
 	}
 	return responseSuccess(rsp)
 }
@@ -510,20 +463,16 @@ func GetMerkleProof(params []interface{}) map[string]interface{} {
 	if len(params) < 1 {
 		return responsePack(berr.INVALID_PARAMS, "")
 	}
-	str := params[0].(string)
-	hex, err := hex.DecodeString(str)
+	str, ok := params[0].(string)
+	if !ok {
+		return responsePack(berr.INVALID_PARAMS, "")
+	}
+	hash, err := common.Uint256FromHexString(str)
 	if err != nil {
 		return responsePack(berr.INVALID_PARAMS, "")
 	}
-	var hash common.Uint256
-	if err := hash.Deserialize(bytes.NewReader(hex)); err != nil {
-		return responsePack(berr.INVALID_PARAMS, "")
-	}
-	height, tx, err := bactor.GetTxnWithHeightByTxHash(hash)
+	height, _, err := bactor.GetTxnWithHeightByTxHash(hash)
 	if err != nil {
-		return responsePack(berr.INVALID_PARAMS, "")
-	}
-	if tx == nil {
 		return responsePack(berr.INVALID_PARAMS, "")
 	}
 	header, err := bactor.GetHeaderByHeight(height)
@@ -542,10 +491,31 @@ func GetMerkleProof(params []interface{}) map[string]interface{} {
 	}
 	var hashes []string
 	for _, v := range proof {
-		hashes = append(hashes, common.ToHexString(v[:]))
+		hashes = append(hashes, v.ToHexString())
 	}
-	return responseSuccess(bcomn.MerkleProof{"MerkleProof", common.ToHexString(header.TransactionsRoot[:]), height,
-		common.ToHexString(curHeader.BlockRoot[:]), curHeight, hashes})
+	return responseSuccess(bcomn.MerkleProof{"MerkleProof", header.TransactionsRoot.ToHexString(), height,
+		curHeader.BlockRoot.ToHexString(), curHeight, hashes})
+}
+
+func GetBlockTxsByHeight(params []interface{}) map[string]interface{} {
+	if len(params) < 1 {
+		return responsePack(berr.INVALID_PARAMS, nil)
+	}
+	switch params[0].(type) {
+	case float64:
+		height := uint32(params[0].(float64))
+		hash := bactor.GetBlockHashFromStore(height)
+		if hash == common.UINT256_EMPTY {
+			return responsePack(berr.INVALID_PARAMS, "")
+		}
+		block, err := bactor.GetBlockFromStore(hash)
+		if err != nil {
+			return responsePack(berr.UNKNOWN_BLOCK, "")
+		}
+		return responseSuccess(bcomn.GetBlockTransactions(block))
+	default:
+		return responsePack(berr.INVALID_PARAMS, "")
+	}
 }
 
 func GetGasPrice(params []interface{}) map[string]interface{} {
@@ -571,8 +541,7 @@ func GetUnclaimOng(params []interface{}) map[string]interface{} {
 	fromAddr := utils.OntContractAddress
 	rsp, err := bcomn.GetAllowance("ong", fromAddr, toAddr)
 	if err != nil {
-		log.Errorf("GetUnclaimOng %s error:%s", toAddr.ToBase58(), err)
-		return responsePack(berr.INTERNAL_ERROR, "")
+		return responsePack(berr.INVALID_PARAMS, "")
 	}
 	return responseSuccess(rsp)
 }

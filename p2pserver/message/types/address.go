@@ -28,17 +28,7 @@ import (
 )
 
 type Addr struct {
-	Hdr       MsgHdr
 	NodeAddrs []comm.PeerAddr
-}
-
-//Check whether header is correct
-func (this Addr) Verify(buf []byte) error {
-	err := this.Hdr.Verify(buf)
-	if err != nil {
-		return errors.NewDetailErr(err, errors.ErrNetVerifyFail, fmt.Sprintf("verify error. buf:%v", buf))
-	}
-	return nil
 }
 
 //Serialize message payload
@@ -55,36 +45,33 @@ func (this Addr) Serialization() ([]byte, error) {
 		return nil, errors.NewDetailErr(err, errors.ErrNetPackFail, fmt.Sprintf("write error. NodeAddrs:%v", this.NodeAddrs))
 	}
 
-	checkSumBuf := CheckSum(p.Bytes())
-	this.Hdr.Init("addr", checkSumBuf, uint32(len(p.Bytes())))
+	return p.Bytes(), nil
+}
 
-	var buf bytes.Buffer
-	err = binary.Write(&buf, binary.LittleEndian, this.Hdr)
-	if err != nil {
-		return nil, errors.NewDetailErr(err, errors.ErrNetPackFail, fmt.Sprintf("write error. Hdr:%v", this.Hdr))
-	}
-	data := append(buf.Bytes(), p.Bytes()...)
-	return data, nil
+func (this *Addr) CmdType() string {
+	return comm.ADDR_TYPE
 }
 
 //Deserialize message payload
 func (this *Addr) Deserialization(p []byte) error {
 	buf := bytes.NewBuffer(p)
-	err := binary.Read(buf, binary.LittleEndian, &(this.Hdr))
-	if err != nil {
-		return errors.NewDetailErr(err, errors.ErrNetUnPackFail, fmt.Sprintf("read Hdr error. buf:%v", buf))
-	}
+
 	var NodeCnt uint64
-	err = binary.Read(buf, binary.LittleEndian, &NodeCnt)
+	err := binary.Read(buf, binary.LittleEndian, &NodeCnt)
+	if NodeCnt > comm.MAX_ADDR_NODE_CNT {
+		NodeCnt = comm.MAX_ADDR_NODE_CNT
+	}
 	if err != nil {
 		return errors.NewDetailErr(err, errors.ErrNetUnPackFail, fmt.Sprintf("read NodeCnt error. buf:%v", buf))
 	}
-	this.NodeAddrs = make([]comm.PeerAddr, NodeCnt)
+
 	for i := 0; i < int(NodeCnt); i++ {
-		err := binary.Read(buf, binary.LittleEndian, &(this.NodeAddrs[i]))
+		var addr comm.PeerAddr
+		err := binary.Read(buf, binary.LittleEndian, &addr)
 		if err != nil {
 			return errors.NewDetailErr(err, errors.ErrNetUnPackFail, fmt.Sprintf("read NodeAddrs error. buf:%v", buf))
 		}
+		this.NodeAddrs = append(this.NodeAddrs, addr)
 	}
 	return nil
 }

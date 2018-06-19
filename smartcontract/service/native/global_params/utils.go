@@ -23,21 +23,20 @@ import (
 
 	"github.com/ontio/ontology/common"
 	cstates "github.com/ontio/ontology/core/states"
-	"github.com/ontio/ontology/smartcontract/event"
 	"github.com/ontio/ontology/smartcontract/service/native"
 	"github.com/ontio/ontology/smartcontract/service/native/utils"
 )
 
 const (
-	SET_PARAM = "SetGlobalParam"
-	PARAM     = "param"
-	TRANSFER  = "transfer"
-	ADMIN     = "admin"
+	PARAM    = "param"
+	TRANSFER = "transfer"
+	ADMIN    = "admin"
+	OPERATOR = "operator"
 )
 
-func getAdminStorageItem(admin *Admin) *cstates.StorageItem {
+func getRoleStorageItem(role *Role) *cstates.StorageItem {
 	bf := new(bytes.Buffer)
-	admin.Serialize(bf)
+	role.Serialize(bf)
 	return &cstates.StorageItem{Value: bf.Bytes()}
 }
 
@@ -47,13 +46,13 @@ func getParamStorageItem(params *Params) *cstates.StorageItem {
 	return &cstates.StorageItem{Value: bf.Bytes()}
 }
 
-func getParamKey(contract common.Address, valueType paramType) []byte {
+func generateParamKey(contract common.Address, valueType paramType) []byte {
 	key := append(contract[:], PARAM...)
 	key = append(key[:], byte(valueType))
 	return key
 }
 
-func getAdminKey(contract common.Address, isTransferAdmin bool) []byte {
+func generateAdminKey(contract common.Address, isTransferAdmin bool) []byte {
 	if isTransferAdmin {
 		return append(contract[:], TRANSFER...)
 	} else {
@@ -61,12 +60,8 @@ func getAdminKey(contract common.Address, isTransferAdmin bool) []byte {
 	}
 }
 
-func notifyParamSetSuccess(native *native.NativeService, contract common.Address, params Params) {
-	native.Notifications = append(native.Notifications,
-		&event.NotifyEventInfo{
-			ContractAddress: contract,
-			States:          []interface{}{SET_PARAM, params},
-		})
+func GenerateOperatorKey(contract common.Address) []byte {
+	return append(contract[:], OPERATOR...)
 }
 
 func getStorageParam(native *native.NativeService, key []byte) (*Params, error) {
@@ -83,7 +78,7 @@ func getStorageParam(native *native.NativeService, key []byte) (*Params, error) 
 	return params, nil
 }
 
-func getStorageAdmin(native *native.NativeService, key []byte) (*Admin, error) {
+func GetStorageRole(native *native.NativeService, key []byte) (*Role, error) {
 	item, err := utils.GetStorageItem(native, key)
 	if err != nil {
 		return nil, err
@@ -91,8 +86,8 @@ func getStorageAdmin(native *native.NativeService, key []byte) (*Admin, error) {
 	if item == nil {
 		return nil, nil
 	}
-	admin := new(Admin)
+	role := new(Role)
 	bf := bytes.NewBuffer(item.Value)
-	admin.Deserialize(bf)
-	return admin, nil
+	role.Deserialize(bf)
+	return role, nil
 }

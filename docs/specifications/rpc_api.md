@@ -81,7 +81,8 @@ Transaction field description
 | getversion |  | Get the version information of the query node |  |
 | getblocksysfee |  | According to the specified index, return the system fee before the block. |  |
 | getcontractstate | script_hash,[verbose] | According to the contract script hash, query the contract information. |  |
-| getmempooltxstate | tx_hash | Query the transaction status in the memory pool. |  |
+| getmempooltxcount |         | Query the transaction count in the memory pool. |  |
+| getmempooltxstate | tx_hash | Query the transaction state in the memory pool. |  |
 | getsmartcodeevent |  | Get smartcode event |  |
 | getblockheightbytxhash | tx_hash | get blockheight of txhash|  |
 | getbalance | address | return balance of base58 account address. |  |
@@ -89,6 +90,7 @@ Transaction field description
 | getgasprice |  | return gasprice |  |
 | getallowance | asset, from, to | return allowance |  |
 | getunclaimong | address | return unclaimong |  |
+| getblocktxsbyheight | height | return tx hashes |  |
 
 ### 1. getbestblockhash
 
@@ -662,9 +664,39 @@ Response:
   "error":0,
   "jsonrpc": "2.0",
   "id": 3,
-  "result": {
-
-  }
+  "result": [
+       {
+            "TxHash": "7e8c19fdd4f9ba67f95659833e336eac37116f74ea8bf7be4541ada05b13503e",
+            "State": 1,
+            "GasConsumed": 0,
+            "Notify": [
+                {
+                    "ContractAddress": "0200000000000000000000000000000000000000",
+                    "States": [
+                        "transfer",
+                        "AFmseVrdL9f9oyCzZefL9tG6UbvhPbdYzM",
+                        "AFmseVrdL9f9oyCzZefL9tG6UbvhUMqNMV",
+                        1000000000000000000
+                    ]
+                }
+            ]
+        },
+        {
+            "TxHash": "fc82cd363271729367098fbabcfd0c02cf6ded1e535700d04658b596d53cf07d",
+            "State": 1,
+            "GasConsumed": 0,
+            "Notify": [
+                {
+                    "ContractAddress": "0200000000000000000000000000000000000000",
+                    "States": [
+                        "transfer",
+                        "AFmseVrdL9f9oyCzZefL9tG6UbvhPbdYzM",
+                        "AFmseVrdL9f9oyCzZefL9tG6UbvhUMqNMV",
+                        1000000000000000000
+                    ]
+                }
+        }
+  ]
 }
 ```
 
@@ -779,7 +811,7 @@ Response:
 
 #### 14. getmempooltxstate
 
-Query the transaction status in the memory pool.
+Query the transaction state in the memory pool.
 
 #### Parameter instruction
 
@@ -807,11 +839,50 @@ Response:
     "jsonrpc": "2.0",
     "id": 1,
     "result": {
+              	"State": [{
+              		"Type": 1,
+              		"Height": 342,
+              		"ErrCode": 0
+              	}, {
+              		"Type": 0,
+              		"Height": 0,
+              		"ErrCode": 0
+              	}]
     }
 }
 ```
 
-#### 15. getblockheightbytxhash
+#### 15. getmempooltxcount
+
+Query the transaction count in the memory pool.
+
+#### Example
+
+Request:
+
+```
+{
+  "jsonrpc": "2.0",
+  "method": "getmempooltxcount",
+  "params": [],
+  "id": 1
+}
+```
+
+Response:
+
+```
+{
+    "desc":"SUCCESS",
+    "error":0,
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": [100,50]
+}
+```
+
+
+#### 16. getblockheightbytxhash
 get blockheight by txhash
 #### Parameter instruction
 txhash: transaction hash
@@ -839,7 +910,7 @@ Response:
 }
 ```
 
-#### 16. getbalance
+#### 17. getbalance
 
 return balance of base58 account address.
 
@@ -876,7 +947,7 @@ Response:
 }
 ```
 
-#### 17. getmerkleproof
+#### 18. getmerkleproof
 
 return merkle proof
 
@@ -930,7 +1001,7 @@ Response:
 }
 ```
 
-#### 18. getgasprice
+#### 19. getgasprice
 
 return gasprice.
 
@@ -963,7 +1034,7 @@ Response:
 }
 ```
 
-#### 19. getallowance
+#### 20. getallowance
 
 return allowance.
 
@@ -993,7 +1064,7 @@ Response:
 }
 ```
 
-#### 20. getunclaimong
+#### 21. getunclaimong
 
 return unclaimong.
 
@@ -1022,6 +1093,43 @@ Response:
    "result": "204957950400000"
 }
 ```
+
+#### 22 getblocktxsbyheight
+
+Get transactions by block height
+return all transaction hash contained in the block corresponding to this height
+
+#### Example
+
+Request:
+
+```
+{
+  "jsonrpc": "2.0",
+  "method": "getblocktxsbyheight",
+  "params": [100],
+  "id": 1
+}
+```
+
+Response:
+
+```
+{
+   "desc":"SUCCESS",
+   "error":0,
+   "id":1,
+   "jsonpc":"2.0",
+   "result": {
+        "Hash": "ea5e5219d2f1591f4feef89885c3f38c83d3a3474a5622cf8cd3de1b93849603",
+        "Height": 100,
+        "Transactions": [
+            "37e017cb9de93aa93ef817e82c555812a0a6d5c3f7d6c521c7808a5a77fc93c7"
+        ]
+    }
+}
+```
+
 ## Error Code
 
 errorcode instruction

@@ -23,6 +23,7 @@ import (
 	"fmt"
 
 	"github.com/ontio/ontology/common"
+	"github.com/ontio/ontology/common/constants"
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/core/ledger"
 	"github.com/ontio/ontology/core/payload"
@@ -59,7 +60,7 @@ func checkTransactionSignatures(tx *types.Transaction) error {
 		kn := len(sig.PubKeys)
 		sn := len(sig.SigData)
 
-		if kn > 24 || sn < m || m > kn {
+		if kn > constants.MULTI_SIG_MAX_PUBKEY_SIZE || sn < m || m > kn || m <= 0 {
 			return errors.New("wrong tx sig param length")
 		}
 
@@ -75,14 +76,17 @@ func checkTransactionSignatures(tx *types.Transaction) error {
 				return err
 			}
 
-			addr, _ := types.AddressFromMultiPubKeys(sig.PubKeys, m)
+			addr, err := types.AddressFromMultiPubKeys(sig.PubKeys, m)
+			if err != nil {
+				return err
+			}
 			address[addr] = true
 		}
 	}
 
 	// check payer in address
 	if address[tx.Payer] == false {
-		return errors.New("signature missing for payer: " + common.ToHexString(tx.Payer[:]))
+		return errors.New("signature missing for payer: " + tx.Payer.ToBase58())
 	}
 
 	return nil

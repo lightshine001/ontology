@@ -20,13 +20,23 @@ package genesis
 import (
 	"github.com/ontio/ontology-crypto/keypair"
 	"github.com/ontio/ontology/common"
+	"github.com/ontio/ontology/common/config"
+	"github.com/ontio/ontology/common/log"
 	"github.com/stretchr/testify/assert"
+	"os"
 	"testing"
 )
 
+func TestMain(m *testing.M) {
+	log.InitLog(0, log.Stdout)
+	m.Run()
+	os.RemoveAll("./ActorLog")
+}
+
 func TestGenesisBlockInit(t *testing.T) {
 	_, pub, _ := keypair.GenerateKeyPair(keypair.PK_ECDSA, keypair.P256)
-	block, err := GenesisBlockInit([]keypair.PublicKey{pub})
+	conf := &config.GenesisConfig{}
+	block, err := BuildGenesisBlock([]keypair.PublicKey{pub}, conf)
 	assert.Nil(t, err)
 	assert.NotNil(t, block)
 	assert.NotEqual(t, block.Header.TransactionsRoot, common.UINT256_EMPTY)

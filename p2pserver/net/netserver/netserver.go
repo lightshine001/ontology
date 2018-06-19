@@ -19,10 +19,9 @@
 package netserver
 
 import (
-	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net"
 	"strconv"
 	"strings"
@@ -35,22 +34,26 @@ import (
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/core/ledger"
 	"github.com/ontio/ontology/p2pserver/common"
-	"github.com/ontio/ontology/p2pserver/dht/types"
+	dt "github.com/ontio/ontology/p2pserver/dht/types"
 	"github.com/ontio/ontology/p2pserver/message/msg_pack"
+	"github.com/ontio/ontology/p2pserver/message/types"
 	"github.com/ontio/ontology/p2pserver/net/protocol"
 	"github.com/ontio/ontology/p2pserver/peer"
+	"encoding/binary"
+	"bytes"
 )
 
 //NewNetServer return the net object in p2p
 func NewNetServer(pubKey keypair.PublicKey) p2p.P2P {
 
 	n := &NetServer{
-		SyncChan: make(chan *common.MsgPayload, common.CHAN_CAPABILITY),
-		ConsChan: make(chan *common.MsgPayload, common.CHAN_CAPABILITY),
+		SyncChan: make(chan *types.MsgPayload, common.CHAN_CAPABILITY),
+		ConsChan: make(chan *types.MsgPayload, common.CHAN_CAPABILITY),
 	}
 
 	n.PeerAddrMap.PeerSyncAddress = make(map[string]*peer.Peer)
 	n.PeerAddrMap.PeerConsAddress = make(map[string]*peer.Peer)
+
 	n.stopLoop = make(chan struct{}, 1)
 	n.init(pubKey)
 	return n
@@ -61,11 +64,11 @@ type NetServer struct {
 	base         peer.PeerCom
 	synclistener net.Listener
 	conslistener net.Listener
-	SyncChan     chan *common.MsgPayload
-	ConsChan     chan *common.MsgPayload
-	feedCh       chan *types.FeedEvent
-	stopLoop     chan struct{}
+	SyncChan     chan *types.MsgPayload
+	ConsChan     chan *types.MsgPayload
 	ConnectingNodes
+	feedCh   chan *dt.FeedEvent
+	stopLoop chan struct{}
 	PeerAddrMap
 	Np *peer.NbrPeers
 }
@@ -113,20 +116,15 @@ func (this *NetServer) init(pubKey keypair.PublicKey) error {
 
 	this.base.SetRelay(true)
 
-	var id uint64
-	key := keypair.SerializePublicKey(pubKey)
-	err := binary.Read(bytes.NewBuffer(key[:8]), binary.LittleEndian, &(id))
-	if err != nil {
-		log.Error(err)
-		return err
-	}
+	rand.Seed(time.Now().UnixNano())
+	id := rand.Uint64()
+
 	this.base.SetID(id)
 
-	log.Infof("init peer ID to 0x%x", this.base.GetID())
+	log.Infof("init peer ID to %d", this.base.GetID())
 	this.Np = &peer.NbrPeers{}
 	this.Np.Init()
 
-	this.base.SetPubKey(pubKey)
 	return nil
 }
 
@@ -151,21 +149,21 @@ func (this *NetServer) loop() {
 	}
 }
 
-func (this *NetServer) handleFeed(event *types.FeedEvent) {
+func (this *NetServer) handleFeed(event *dt.FeedEvent) {
 	switch event.EvtType {
-	case types.Add:
-		node := event.Event.(*types.Node)
+	case dt.Add:
+		node := event.Event.(*dt.Node)
 		address := node.IP + ":" + strconv.Itoa(int(node.TCPPort))
 		this.Connect(address, false)
-	case types.Del:
-		id := event.Event.(types.NodeID)
+	case dt.Del:
+		id := event.Event.(dt.NodeID)
 		this.disconnectPeer(id)
 	default:
 		log.Infof("handle feed: unknown feed event %d", event.EvtType)
 	}
 }
 
-func (this *NetServer) disconnectPeer(id types.NodeID) {
+func (this *NetServer) disconnectPeer(id dt.NodeID) {
 	//Todo: use unified id
 	var peerID uint64
 	err := binary.Read(bytes.NewBuffer(id[:8]), binary.LittleEndian, &(peerID))
@@ -187,7 +185,7 @@ func (this *NetServer) disconnectPeer(id types.NodeID) {
 	log.Infof("disconnect peer %s", peer.GetAddr())
 }
 
-func (this *NetServer) SetFeedCh(ch chan *types.FeedEvent) {
+func (this *NetServer) SetFeedCh(ch chan *dt.FeedEvent) {
 	this.feedCh = ch
 }
 
@@ -242,11 +240,6 @@ func (this *NetServer) GetRelay() bool {
 	return this.base.GetRelay()
 }
 
-//GetPubKey return the key config in net module
-func (this *NetServer) GetPubKey() keypair.PublicKey {
-	return this.base.GetPubKey()
-}
-
 // GetPeer returns a peer with the peer id
 func (this *NetServer) GetPeer(id uint64) *peer.Peer {
 	return this.Np.GetPeer(id)
@@ -288,12 +281,12 @@ func (this *NetServer) NodeEstablished(id uint64) bool {
 }
 
 //Xmit called by actor, broadcast msg
-func (this *NetServer) Xmit(buf []byte, hash oc.Uint256, isCons bool) {
-	this.Np.Broadcast(buf, hash, isCons)
+func (this *NetServer) Xmit(msg types.Message, hash oc.Uint256, isCons bool) {
+	this.Np.Broadcast(msg, hash, isCons)
 }
 
 //GetMsgChan return sync or consensus channel when msgrouter need msg input
-func (this *NetServer) GetMsgChan(isConsensus bool) chan *common.MsgPayload {
+func (this *NetServer) GetMsgChan(isConsensus bool) chan *types.MsgPayload {
 	if isConsensus {
 		return this.ConsChan
 	} else {
@@ -302,12 +295,12 @@ func (this *NetServer) GetMsgChan(isConsensus bool) chan *common.MsgPayload {
 }
 
 //Tx send data buf to peer
-func (this *NetServer) Send(p *peer.Peer, data []byte, isConsensus bool) error {
+func (this *NetServer) Send(p *peer.Peer, msg types.Message, isConsensus bool) error {
 	if p != nil {
 		if config.DefConfig.P2PNode.DualPortSupport == false {
-			return p.Send(data, false)
+			return p.Send(msg, false)
 		}
-		return p.Send(data, isConsensus)
+		return p.Send(msg, isConsensus)
 	}
 	log.Error("send to a invalid peer")
 	return errors.New("send to a invalid peer")
@@ -324,12 +317,22 @@ func (this *NetServer) IsPeerEstablished(p *peer.Peer) bool {
 
 //Connect used to connect net address under sync or cons mode
 func (this *NetServer) Connect(addr string, isConsensus bool) error {
+	if !this.AddrValid(addr) {
+		return nil
+	}
+
 	if this.IsNbrPeerAddr(addr, isConsensus) {
 		return nil
 	}
 	if added := this.AddInConnectingList(addr); added == false {
-		log.Info("node exist in connecting list", addr)
-		return errors.New("node exist in connecting list")
+		p := this.GetPeerFromAddr(addr)
+		if p != nil {
+			if p.SyncLink.Valid() {
+				log.Info("node exist in connecting list", addr)
+				return errors.New("node exist in connecting list")
+			}
+		}
+		this.RemoveFromConnectingList(addr)
 	}
 
 	isTls := config.DefConfig.P2PNode.IsTLS
@@ -365,13 +368,12 @@ func (this *NetServer) Connect(addr string, isConsensus bool) error {
 		remotePeer.AttachSyncChan(this.SyncChan)
 		go remotePeer.SyncLink.Rx()
 		remotePeer.SetSyncState(common.HAND)
-		vpl := msgpack.NewVersionPayload(this, false, ledger.DefLedger.GetCurrentBlockHeight())
-		buf, err := msgpack.NewVersion(vpl, this.GetPubKey())
+		version := msgpack.NewVersion(this, false, ledger.DefLedger.GetCurrentBlockHeight())
+		err := remotePeer.SyncLink.Tx(version)
 		if err != nil {
 			log.Error(err)
 			return err
 		}
-		remotePeer.SyncLink.Tx(buf)
 	} else {
 		remotePeer = peer.NewPeer() //would merge with a exist peer in versionhandle
 		this.AddPeerConsAddress(addr, remotePeer)
@@ -380,13 +382,12 @@ func (this *NetServer) Connect(addr string, isConsensus bool) error {
 		remotePeer.AttachConsChan(this.ConsChan)
 		go remotePeer.ConsLink.Rx()
 		remotePeer.SetConsState(common.HAND)
-		vpl := msgpack.NewVersionPayload(this, true, ledger.DefLedger.GetCurrentBlockHeight())
-		buf, err := msgpack.NewVersion(vpl, this.GetPubKey())
+		version := msgpack.NewVersion(this, true, ledger.DefLedger.GetCurrentBlockHeight())
+		err := remotePeer.ConsLink.Tx(version)
 		if err != nil {
 			log.Error(err)
 			return err
 		}
-		remotePeer.ConsLink.Tx(buf)
 	}
 
 	return nil
@@ -483,6 +484,10 @@ func (this *NetServer) startSyncAccept(listener net.Listener) {
 			log.Error("error accepting ", err.Error())
 			return
 		}
+		if !this.AddrValid(conn.RemoteAddr().String()) {
+			log.Infof("remote %s not in reserved list close it ", conn.RemoteAddr())
+			conn.Close()
+		}
 		log.Info("remote sync node connect with ",
 			conn.RemoteAddr(), conn.LocalAddr())
 
@@ -507,6 +512,10 @@ func (this *NetServer) startConsAccept(listener net.Listener) {
 		if err != nil {
 			log.Error("error accepting ", err.Error())
 			return
+		}
+		if !this.AddrValid(conn.RemoteAddr().String()) {
+			log.Infof("remote %s not in reserved list close it ", conn.RemoteAddr())
+			conn.Close()
 		}
 		log.Info("remote cons node connect with ",
 			conn.RemoteAddr(), conn.LocalAddr())
@@ -619,4 +628,19 @@ func (this *NetServer) RemovePeerConsAddress(addr string) {
 	if _, ok := this.PeerConsAddress[addr]; ok {
 		delete(this.PeerConsAddress, addr)
 	}
+}
+
+//AddrValid whether the addr could be connect or accept
+func (this *NetServer) AddrValid(addr string) bool {
+	if config.DefConfig.P2PNode.ReservedPeersOnly && len(config.DefConfig.P2PNode.ReservedPeers) > 0 {
+		for _, ip := range config.DefConfig.P2PNode.ReservedPeers {
+			if strings.HasPrefix(addr, ip) {
+				log.Info("found reserved peer :", addr)
+				return true
+			}
+		}
+		return false
+	}
+	return true
+
 }

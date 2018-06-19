@@ -531,7 +531,7 @@ According to the contract script hash, query the contract information.
 
 #### 15. get smart contract event txhash list by height
 
-Get a list of transaction hash with smartevent based on height
+Get a list of transaction  with smartcontract event based on height
 
 
 #### Example usage:
@@ -551,7 +551,38 @@ Get a list of transaction hash with smartevent based on height
     "Desc": "SUCCESS",
     "Error": 0,
     "Result": [
-        "592d83c739d9d167b74b385161fee09bfe820eae5bc4a69411f8e00f4847b833"
+               {
+                    "TxHash": "7e8c19fdd4f9ba67f95659833e336eac37116f74ea8bf7be4541ada05b13503e",
+                    "State": 1,
+                    "GasConsumed": 0,
+                    "Notify": [
+                        {
+                            "ContractAddress": "0200000000000000000000000000000000000000",
+                            "States": [
+                                "transfer",
+                                "AFmseVrdL9f9oyCzZefL9tG6UbvhPbdYzM",
+                                "AFmseVrdL9f9oyCzZefL9tG6UbvhUMqNMV",
+                                1000000000000000000
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "TxHash": "fc82cd363271729367098fbabcfd0c02cf6ded1e535700d04658b596d53cf07d",
+                    "State": 1,
+                    "GasConsumed": 0,
+                    "Notify": [
+                        {
+                            "ContractAddress": "0200000000000000000000000000000000000000",
+                            "States": [
+                                "transfer",
+                                "AFmseVrdL9f9oyCzZefL9tG6UbvhPbdYzM",
+                                "AFmseVrdL9f9oyCzZefL9tG6UbvhUMqNMV",
+                                1000000000000000000
+                            ]
+                        }
+                    ]
+                }
     ],
     "Version": "1.0.0"
 }
@@ -752,6 +783,60 @@ get unclaimong
     "Version": "1.0.0"
 }
 ```
+
+### 23. Get mempooltxstate
+Query the transaction state in the memory pool.
+
+#### Request Example:
+```
+{
+    "Action": "getmempooltxstate",
+    "Hash": "0b437771a42d18d292741c5d4f1300a135fa6e65b0594e39dc299e7f8279221a",
+    "Version": "1.0.0"
+}
+```
+#### Response
+```
+{
+    "Action": "getmempooltxstate",
+    "Desc": "SUCCESS",
+    "Error": 0,
+    "Version": "1.0.0",
+    "Result": {
+              	"State": [{
+              		"Type": 1,
+              		"Height": 342,
+              		"ErrCode": 0
+              	}, {
+              		"Type": 0,
+              		"Height": 0,
+              		"ErrCode": 0
+              	}]
+    }
+}
+```
+
+### 24. Get mempooltxcount
+Query the transaction count in the memory pool.
+
+#### Request Example:
+```
+{
+    "Action": "getmempooltxcount",
+    "Version": "1.0.0"
+}
+```
+#### Response
+```
+{
+    "Action": "getmempooltxcount",
+    "Desc": "SUCCESS",
+    "Error": 0,
+    "Version": "1.0.0",
+    "Result": [100,50]
+}
+```
+
 
 ## Error Code
 

@@ -73,7 +73,7 @@ func (this *DHTMessagePool) start() {
 // destinateNode: request to the node
 // reqType: request type
 // supportData: store some data to support this request
-// shouldWait: the request should be waited or not, if is true, master call Wait func
+// shouldWait: the request should be waited or not, if is true, must call Wait func
 func (this *DHTMessagePool) AddRequest(destinateNode *Node, reqType DHTRequestType, supportData *Node,
 	shouldWait bool) (id RequestId, isNewRequest bool) {
 	this.lock.Lock()

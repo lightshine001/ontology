@@ -21,7 +21,18 @@ package dht
 import (
 	"sync"
 
+	"fmt"
+	"github.com/ontio/ontology/common/serialization"
 	"github.com/ontio/ontology/p2pserver/dht/types"
+	"github.com/ontio/ontology/p2pserver/dht/utils"
+	"io"
+	"strconv"
+)
+
+const (
+	DHT_BLACK_LIST_FILE = "./dht_black_list"
+	DHT_WHITE_LIST_FILE = "./dht_white_list"
+	DHT_ROUTING_TABLE   = "./dht_routing_table"
 )
 
 type bucket struct {
@@ -33,6 +44,9 @@ type routingTable struct {
 	id      types.NodeID
 	buckets []*bucket
 	feedCh  chan *types.FeedEvent
+
+	whiteList []string
+	blackList []string
 }
 
 func (this *routingTable) init(id types.NodeID, ch chan *types.FeedEvent) {
@@ -45,6 +59,10 @@ func (this *routingTable) init(id types.NodeID, ch chan *types.FeedEvent) {
 
 	this.id = id
 	this.feedCh = ch
+
+	// load white list and black list
+	this.whiteList = utils.LoadList(DHT_WHITE_LIST_FILE)
+	this.blackList = utils.LoadList(DHT_BLACK_LIST_FILE)
 }
 
 func (this *routingTable) locateBucket(id types.NodeID) (int, *bucket) {
@@ -72,6 +90,10 @@ func (this *routingTable) addNode(node *types.Node, bucketIndex int) bool {
 	this.mu.Lock()
 	defer this.mu.Unlock()
 
+	nodeAddress := node.IP + ":" + strconv.Itoa(int(node.UDPPort))
+	if !utils.IsContained(this.whiteList, nodeAddress) {
+		return false
+	}
 	bucket := this.buckets[bucketIndex]
 	for i, entry := range bucket.entries {
 		if entry.ID == node.ID {
@@ -208,6 +230,92 @@ func (this *routingTable) isNodeInBucket(id types.NodeID, bucket int) (*types.No
 		}
 	}
 	return nil, false
+}
+
+func (this *routingTable) serialize(w io.Writer) error {
+	if _, err := w.Write(this.id[:]); err != nil {
+		return fmt.Errorf("serialize dht error: serialize ID err, %s", err)
+	}
+	notEmptyNum := 0
+	for _, buck := range this.buckets {
+		if buck != nil && len(buck.entries) > 0 {
+			notEmptyNum++
+		}
+	}
+	if err := serialization.WriteVarUint(w, uint64(notEmptyNum)); err != nil {
+		return fmt.Errorf("serialize dht error: serialize not empty bucket num err, %s", err)
+	}
+	for index, buck := range this.buckets {
+		if buck != nil && len(buck.entries) > 0 {
+			if err := serialization.WriteVarUint(w, uint64(index)); err != nil {
+				return fmt.Errorf("serialize dht error: serialize bucket index err, %s", err)
+			}
+			if err := serialization.WriteVarUint(w, uint64(len(buck.entries))); err != nil {
+				return fmt.Errorf("serialize dht error: serialize node length err, %s", err)
+			}
+			for _, node := range buck.entries {
+				if _, err := w.Write(node.ID[:]); err != nil {
+					return fmt.Errorf("serialize dht error: serialize node ID err, %s, bucket index: %d", err, index)
+				}
+				if err := serialization.WriteString(w, node.IP); err != nil {
+					return fmt.Errorf("serialize dht error: serialize node IP err, %s, bucket index: %d",
+						err, index)
+				}
+				if err := serialization.WriteUint16(w, node.UDPPort); err != nil {
+					return fmt.Errorf("serialize dht error: serialize node udp port err, %s, bucket index: %d",
+						err, index)
+				}
+				if err := serialization.WriteUint16(w, node.TCPPort); err != nil {
+					return fmt.Errorf("serialize dht error: serialize node tcp port err, %s, bucket index: %d",
+						err, index)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (this *routingTable) deserialize(r io.Reader) error {
+	if _, err := r.Read(this.id[:]); err != nil {
+		return fmt.Errorf("serialize dht error: serialize ID err, %s", err)
+	}
+	notEmptyNum, err := serialization.ReadVarUint(r, 0)
+	if err != nil {
+		return fmt.Errorf("deserialize dht error: serialize not empty bucket num err, %s", err)
+	}
+	for i := 0; i < int(notEmptyNum); i++ {
+		bucketIndex, err := serialization.ReadVarUint(r, 0)
+		if err != nil {
+			return fmt.Errorf("deserialize dht error: deserialize bucket index err, %s", err)
+		}
+		nodeNum, err := serialization.ReadVarUint(r, 0)
+		if err != nil {
+			return fmt.Errorf("deserialize dht error: deserialize node length err, %s", err)
+		}
+		if nodeNum > 0 {
+			for j := 0; j < int(nodeNum); j++ {
+				node := new(types.Node)
+				if _, err := io.ReadFull(r, node.ID[:]); err != nil {
+					return fmt.Errorf("deserialize dht error: deserialize node ID err, %s, bucket index: %d",
+						err, bucketIndex)
+				}
+				if node.IP, err = serialization.ReadString(r); err != nil {
+					return fmt.Errorf("deserialize dht error: deserialize node IP err, %s, bucket index: %d",
+						err, bucketIndex)
+				}
+				if node.UDPPort, err = serialization.ReadUint16(r); err != nil {
+					return fmt.Errorf("deserialize dht error: deserialize node udp port err, %s, bucket index: %d",
+						err, bucketIndex)
+				}
+				if node.TCPPort, err = serialization.ReadUint16(r); err != nil {
+					return fmt.Errorf("deserialize dht error: deserialize node tcp port err, %s, bucket index: %d",
+						err, bucketIndex)
+				}
+				this.addNode(node, int(bucketIndex))
+			}
+		}
+	}
+	return nil
 }
 
 // table of leading zero counts for bytes [0..255]

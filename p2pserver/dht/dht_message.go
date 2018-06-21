@@ -1,10 +1,15 @@
 package dht
 
 import (
+	"bytes"
+	"errors"
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/p2pserver/dht/types"
+	"github.com/ontio/ontology/p2pserver/dht/utils"
+	"github.com/ontio/ontology/p2pserver/message/msg_pack"
 	mt "github.com/ontio/ontology/p2pserver/message/types"
 	"net"
+	"strconv"
 )
 
 // findNodeHandle handles a find node message from UDP network
@@ -37,11 +42,16 @@ func (this *DHT) neighborsHandle(from *net.UDPAddr, msg mt.Message) {
 	requestId := types.ConstructRequestId(neighbors.FromID,
 		types.DHT_FIND_NODE_REQUEST)
 	this.messagePool.DeleteRequest(requestId)
+	log.Info("receive neighbors of ", requestId)
 
 	pingReqIds := make([]types.RequestId, 0)
 
 	for i := 0; i < len(neighbors.Nodes); i++ {
 		node := &neighbors.Nodes[i]
+		nodeAddress := node.IP + ":" + strconv.Itoa(int(node.UDPPort))
+		if utils.IsContained(this.routingTable.blackList, nodeAddress) {
+			continue
+		}
 		if node.ID == this.nodeID {
 			continue
 		}
@@ -71,6 +81,11 @@ func (this *DHT) neighborsHandle(from *net.UDPAddr, msg mt.Message) {
 
 // pingHandle handles a ping message from UDP network
 func (this *DHT) pingHandle(from *net.UDPAddr, msg mt.Message) {
+	// black list detect
+	nodeAddress := string(from.IP) + ":" + strconv.Itoa(from.Port)
+	if utils.IsContained(this.routingTable.blackList, nodeAddress) {
+		return
+	}
 	ping, ok := msg.(*mt.DHTPing)
 	if !ok {
 		log.Error("ping handle detected error message type!")
@@ -82,20 +97,17 @@ func (this *DHT) pingHandle(from *net.UDPAddr, msg mt.Message) {
 		return
 	}
 
-	// if routing table doesn't contain the node, add it to routing table and wait request return
-	if node := this.routingTable.queryNode(ping.FromID); node == nil {
-		node := &types.Node{
+	// add the node to routing table
+	var node *types.Node
+	if node = this.routingTable.queryNode(ping.FromID); node == nil {
+		node = &types.Node{
 			ID:      ping.FromID,
 			IP:      from.IP.String(),
 			UDPPort: uint16(from.Port),
 			TCPPort: uint16(ping.SrcEndPoint.TCPPort),
 		}
-		this.addNode(node)
-	} else {
-		// update this node
-		bucketIndex, _ := this.routingTable.locateBucket(ping.FromID)
-		this.routingTable.addNode(node, bucketIndex)
 	}
+	this.addNode(node)
 	this.pong(from)
 	this.DisplayRoutingTable()
 }
@@ -113,8 +125,8 @@ func (this *DHT) pongHandle(from *net.UDPAddr, msg mt.Message) {
 		return
 	}
 
-	requesetId := types.ConstructRequestId(pong.FromID, types.DHT_PING_REQUEST)
-	node, ok := this.messagePool.GetRequestData(requesetId)
+	requestId := types.ConstructRequestId(pong.FromID, types.DHT_PING_REQUEST)
+	node, ok := this.messagePool.GetRequestData(requestId)
 	if !ok {
 		// request pool doesn't contain the node, ping timeout
 		this.routingTable.removeNode(pong.FromID)
@@ -124,7 +136,8 @@ func (this *DHT) pongHandle(from *net.UDPAddr, msg mt.Message) {
 	// add to routing table
 	this.addNode(node)
 	// remove node from request pool
-	this.messagePool.DeleteRequest(requesetId)
+	this.messagePool.DeleteRequest(requestId)
+	log.Info("receive pong of ", requestId)
 }
 
 // update the node to bucket when receive message from the node
@@ -134,5 +147,78 @@ func (this *DHT) updateNode(fromId types.NodeID) {
 		// add node to bucket
 		bucketIndex, _ := this.routingTable.locateBucket(fromId)
 		this.routingTable.addNode(node, bucketIndex)
+	}
+}
+
+// findNode sends findNode to remote node to get the closest nodes to target
+func (this *DHT) findNode(remotePeer *types.Node, targetID types.NodeID) error {
+	addr, err := getNodeUDPAddr(remotePeer)
+	if err != nil {
+		return err
+	}
+	findNodeMsg := msgpack.NewFindNode(this.nodeID, targetID)
+	bf := new(bytes.Buffer)
+	mt.WriteMessage(bf, findNodeMsg)
+	this.send(addr, bf.Bytes())
+	return nil
+}
+
+// findNodeReply reply remote node when receiving find node
+func (this *DHT) findNodeReply(addr *net.UDPAddr, targetId types.NodeID) error {
+	// query routing table
+	nodes := this.routingTable.getClosestNodes(types.BUCKET_SIZE, targetId)
+
+	neighborsMsg := msgpack.NewNeighbors(this.nodeID, nodes)
+	bf := new(bytes.Buffer)
+	mt.WriteMessage(bf, neighborsMsg)
+	this.send(addr, bf.Bytes())
+
+	return nil
+}
+
+// ping the remote node
+func (this *DHT) ping(addr *net.UDPAddr) error {
+	ip := net.ParseIP(this.addr).To16()
+	if ip == nil {
+		log.Error("Parse IP address error\n", this.addr)
+		return errors.New("Parse IP address error")
+	}
+	pingMsg := msgpack.NewDHTPing(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
+	bf := new(bytes.Buffer)
+	mt.WriteMessage(bf, pingMsg)
+	this.send(addr, bf.Bytes())
+	return nil
+}
+
+// pong reply remote node when receiving ping
+func (this *DHT) pong(addr *net.UDPAddr) error {
+
+	ip := net.ParseIP(this.addr).To16()
+	if ip == nil {
+		log.Error("Parse IP address error\n", this.addr)
+		return errors.New("Parse IP address error")
+	}
+
+	pongMsg := msgpack.NewDHTPong(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
+	bf := new(bytes.Buffer)
+	mt.WriteMessage(bf, pongMsg)
+	this.send(addr, bf.Bytes())
+	return nil
+}
+
+// onRequestTimeOut handles a timeout event of request
+func (this *DHT) onRequestTimeOut(requestId types.RequestId) {
+	reqType := types.GetReqTypeFromReqId(requestId)
+	this.messagePool.DeleteRequest(requestId)
+	log.Info("request ", requestId, "timeout!")
+	if reqType == types.DHT_FIND_NODE_REQUEST {
+		results := make([]*types.Node, 0)
+		this.messagePool.SetResults(results)
+	} else if reqType == types.DHT_PING_REQUEST {
+		pendingNode, ok := this.messagePool.GetSupportData(requestId)
+		if ok && pendingNode != nil {
+			bucketIndex, _ := this.routingTable.locateBucket(pendingNode.ID)
+			this.routingTable.addNode(pendingNode, bucketIndex)
+		}
 	}
 }

@@ -20,7 +20,6 @@ package utils
 
 import (
 	"errors"
-	//"net"
 	"strconv"
 	"strings"
 	"time"
@@ -36,7 +35,6 @@ import (
 	"github.com/ontio/ontology/p2pserver/message/msg_pack"
 	msgTypes "github.com/ontio/ontology/p2pserver/message/types"
 	"github.com/ontio/ontology/p2pserver/net/protocol"
-	"net"
 )
 
 // HeaderReqHandle handles the header sync req from peer
@@ -437,6 +435,10 @@ func VerAckHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, arg
 			}
 		}
 	}
+<<<<<<< HEAD
+=======
+
+>>>>>>> Decouple DHT ID from public key
 }
 
 // DataReqHandle handles the data req(block/Transaction) from peer

@@ -19,7 +19,6 @@
 package p2pserver
 
 import (
-	"encoding/hex"
 	"encoding/json"
 
 	"errors"
@@ -33,9 +32,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ontio/ontology-crypto/keypair"
 	evtActor "github.com/ontio/ontology-eventbus/actor"
-	"github.com/ontio/ontology/account"
 	comm "github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/config"
 	"github.com/ontio/ontology/common/log"
@@ -51,7 +48,6 @@ import (
 	"github.com/ontio/ontology/p2pserver/net/netserver"
 	p2pnet "github.com/ontio/ontology/p2pserver/net/protocol"
 	"github.com/ontio/ontology/p2pserver/peer"
-	"encoding/json"
 )
 
 //P2PServer control all network activities
@@ -76,15 +72,16 @@ type ReconnectAddrs struct {
 }
 
 //NewServer return a new p2pserver according to the pubkey
-func NewServer(acc *account.Account) *P2PServer {
-	n := netserver.NewNetServer(acc.PubKey())
+func NewServer() *P2PServer {
+	n := netserver.NewNetServer()
 
 	p := &P2PServer{
 		network: n,
 		ledger:  ledger.DefLedger,
 	}
 
-	nodeID, _ := dt.PubkeyID(acc.PublicKey)
+	address := "127.0.0.1:" + strconv.Itoa(int(config.DefConfig.Genesis.DHT.UDPPort))
+	nodeID := dt.ConstructID(address)
 	seeds := loadSeeds()
 	p.dht = dht.NewDHT(nodeID, seeds)
 	p.network.SetFeedCh(p.dht.GetFeedCh())
@@ -100,17 +97,13 @@ func loadSeeds() []*dt.Node {
 	seeds := make([]*dt.Node, 0, len(config.DefConfig.Genesis.DHT.Seeds))
 	for i := 0; i < len(config.DefConfig.Genesis.DHT.Seeds); i++ {
 		node := config.DefConfig.Genesis.DHT.Seeds[i]
-		pubKey, err := hex.DecodeString(node.PubKey)
-		k, err := keypair.DeserializePublicKey(pubKey)
-		if err != nil {
-			return nil
-		}
 		seed := &dt.Node{
 			IP:      node.IP,
 			UDPPort: node.UDPPort,
 			TCPPort: node.TCPPort,
 		}
-		seed.ID, _ = dt.PubkeyID(k)
+		addr := node.IP + strconv.Itoa(int(node.UDPPort))
+		seed.ID = dt.ConstructID(addr)
 		seeds = append(seeds, seed)
 	}
 

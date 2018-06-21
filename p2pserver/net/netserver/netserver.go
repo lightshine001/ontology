@@ -28,9 +28,12 @@ import (
 	"sync"
 	"time"
 
+<<<<<<< HEAD
 	"bytes"
 	"encoding/binary"
 	"github.com/ontio/ontology-crypto/keypair"
+=======
+>>>>>>> Decouple DHT ID from public key
 	oc "github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/config"
 	"github.com/ontio/ontology/common/log"
@@ -45,6 +48,10 @@ import (
 
 //NewNetServer return the net object in p2p
 func NewNetServer() p2p.P2P {
+<<<<<<< HEAD
+=======
+
+>>>>>>> Decouple DHT ID from public key
 	n := &NetServer{
 		SyncChan: make(chan *types.MsgPayload, common.CHAN_CAPABILITY),
 		ConsChan: make(chan *types.MsgPayload, common.CHAN_CAPABILITY),
@@ -54,7 +61,7 @@ func NewNetServer() p2p.P2P {
 	n.PeerAddrMap.PeerConsAddress = make(map[string]*peer.Peer)
 
 	n.stopLoop = make(chan struct{}, 1)
-	n.init(pubKey)
+	n.init()
 	return n
 }
 
@@ -104,7 +111,7 @@ type PeerAddrMap struct {
 }
 
 //init initializes attribute of network server
-func (this *NetServer) init(pubKey keypair.PublicKey) error {
+func (this *NetServer) init() error {
 	this.base.SetVersion(common.PROTOCOL_VERSION)
 
 	if config.DefConfig.Consensus.EnableConsensus {
@@ -173,33 +180,26 @@ func (this *NetServer) handleFeed(event *dt.FeedEvent) {
 		address := node.IP + ":" + strconv.Itoa(int(node.TCPPort))
 		this.Connect(address, false)
 	case dt.Del:
-		id := event.Event.(dt.NodeID)
-		this.disconnectPeer(id)
+		node := event.Event.(*dt.Node)
+		address := node.IP + ":" + strconv.Itoa(int(node.TCPPort))
+		this.disconnectPeer(address)
 	default:
 		log.Infof("handle feed: unknown feed event %d", event.EvtType)
 	}
 }
 
-func (this *NetServer) disconnectPeer(id dt.NodeID) {
-	//Todo: use unified id
-	var peerID uint64
-	err := binary.Read(bytes.NewBuffer(id[:8]), binary.LittleEndian, &(peerID))
-	if err != nil {
-		log.Error(err)
-		return
-	}
-
-	peer := this.GetPeer(peerID)
+func (this *NetServer) disconnectPeer(address string) {
+	peer := this.GetPeerFromAddr(address)
 	if peer == nil {
 		return
 	}
 
-	this.RemoveFromConnectingList(peer.GetAddr())
-	this.RemovePeerSyncAddress(peer.GetAddr())
-	this.RemovePeerConsAddress(peer.GetAddr())
+	this.RemoveFromConnectingList(address)
+	this.RemovePeerSyncAddress(address)
+	this.RemovePeerConsAddress(address)
 	peer.CloseSync()
 	peer.CloseCons()
-	log.Infof("disconnect peer %s", peer.GetAddr())
+	log.Infof("disconnect peer %s", address)
 }
 
 func (this *NetServer) SetFeedCh(ch chan *dt.FeedEvent) {

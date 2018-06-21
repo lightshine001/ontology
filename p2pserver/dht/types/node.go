@@ -23,6 +23,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/ontio/ontology/common"
@@ -63,8 +64,13 @@ func StringID(in string) (NodeID, error) {
 }
 
 // ConstructID returns a marshaled representation of the given address:port.
-func ConstructID(addr string) NodeID {
-	temp := sha256.Sum256([]byte(addr))
+func ConstructID(ip string, port uint16) NodeID {
+	var buffer bytes.Buffer
+	buffer.WriteString(ip)
+	buffer.WriteString(":")
+	buffer.WriteString(strconv.Itoa(int(port)))
+
+	temp := sha256.Sum256(buffer.Bytes())
 	hash := common.Uint256(sha256.Sum256(temp[:]))
 	var id NodeID
 	copy(id[:], hash[:])

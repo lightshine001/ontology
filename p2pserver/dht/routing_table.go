@@ -22,7 +22,6 @@ import (
 	"sync"
 
 	"github.com/ontio/ontology/p2pserver/dht/types"
-	"github.com/ontio/ontology/common/log"
 )
 
 type bucket struct {
@@ -106,6 +105,9 @@ func (this *routingTable) removeNode(id types.NodeID) {
 	_, bucket := this.locateBucket(id)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> Decouple DHT ID from public key
 	entries := bucket.entries[:0]
 	var node *types.Node
 	for _, entry := range bucket.entries {
@@ -121,6 +123,7 @@ func (this *routingTable) removeNode(id types.NodeID) {
 		feed := &types.FeedEvent{
 			EvtType: types.Del,
 			Event:   node,
+<<<<<<< HEAD
 =======
 	for i, entry := range bucket.entries {
 		if entry.ID == id {
@@ -133,6 +136,8 @@ func (this *routingTable) removeNode(id types.NodeID) {
 			this.feedCh <- feed
 			return
 >>>>>>> fix a bug of ping handler, ensure the routing table of a pair of nodes contains each other
+=======
+>>>>>>> Decouple DHT ID from public key
 		}
 		this.feedCh <- feed
 	}

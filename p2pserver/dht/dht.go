@@ -353,14 +353,20 @@ func (this *DHT) ping(addr *net.UDPAddr) error {
 	pingMsg := msgpack.NewDHTPing(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
 	bf := new(bytes.Buffer)
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> Decouple DHT ID from public key
 	err := mt.WriteMessage(bf, pingMsg)
 	if err != nil {
 		log.Info(err)
 		return err
 	}
+<<<<<<< HEAD
 =======
 	mt.WriteMessage(bf, pingMsg)
 >>>>>>> clean dht network message
+=======
+>>>>>>> Decouple DHT ID from public key
 	this.send(addr, bf.Bytes())
 	return nil
 }

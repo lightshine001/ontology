@@ -22,7 +22,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
-	//"net"
 	"strconv"
 	"strings"
 	"time"
@@ -38,27 +37,7 @@ import (
 	"github.com/ontio/ontology/p2pserver/message/msg_pack"
 	msgTypes "github.com/ontio/ontology/p2pserver/message/types"
 	"github.com/ontio/ontology/p2pserver/net/protocol"
-	"net"
 )
-
-// AddrReqHandle handles the neighbor address request from peer
-func AddrReqHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args ...interface{}) {
-	log.Debug("receive addr request message", data.Addr, data.Id)
-	remotePeer := p2p.GetPeer(data.Id)
-	if remotePeer == nil {
-		log.Error("remotePeer invalid in AddrReqHandle")
-		return
-	}
-
-	var addrStr []msgCommon.PeerAddr
-	addrStr = p2p.GetNeighborAddrs()
-	msg := msgpack.NewAddrs(addrStr)
-	err := p2p.Send(remotePeer, msg, false)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-}
 
 // HeaderReqHandle handles the header sync req from peer
 func HeadersReqHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args ...interface{}) {
@@ -436,41 +415,8 @@ func VerAckHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, arg
 				go p2p.Connect(nodeConsensusAddr, true)
 			}
 		}
-		msg := msgpack.NewAddrReq()
-		go p2p.Send(remotePeer, msg, false)
 	}
 
-}
-
-// AddrHandle handles the neighbor address response message from peer
-func AddrHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args ...interface{}) {
-	log.Debug("handle addr message", data.Addr, data.Id)
-
-	var msg = data.Payload.(*msgTypes.Addr)
-	for _, v := range msg.NodeAddrs {
-		var ip net.IP
-		ip = v.IpAddr[:]
-		address := ip.To16().String() + ":" + strconv.Itoa(int(v.Port))
-		log.Infof("the ip address is %s id is 0x%x", address, v.ID)
-
-		if v.ID == p2p.GetID() {
-			continue
-		}
-
-		if p2p.NodeEstablished(v.ID) {
-			continue
-		}
-
-		if ret := p2p.GetPeerFromAddr(address); ret != nil {
-			continue
-		}
-
-		if v.Port == 0 {
-			continue
-		}
-		log.Info("connect ipaddr ：", address)
-		go p2p.Connect(address, false)
-	}
 }
 
 // DataReqHandle handles the data req(block/Transaction) from peer

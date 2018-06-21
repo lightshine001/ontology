@@ -336,7 +336,11 @@ func (this *DHT) ping(addr *net.UDPAddr) error {
 	}
 	pingMsg := msgpack.NewDHTPing(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
 	bf := new(bytes.Buffer)
-	mt.WriteMessage(bf, pingMsg)
+	err := mt.WriteMessage(bf, pingMsg)
+	if err != nil {
+		log.Info(err)
+		return err
+	}
 	this.send(addr, bf.Bytes())
 	return nil
 }

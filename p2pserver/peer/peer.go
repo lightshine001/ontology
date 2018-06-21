@@ -21,11 +21,11 @@ package peer
 import (
 	"errors"
 	"fmt"
+	"github.com/fatih/set"
 	"net"
 	"runtime"
 	"sync/atomic"
 	"time"
-	"github.com/fatih/set"
 
 	comm "github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/log"
@@ -372,7 +372,6 @@ func (this *Peer) MarkHashAsSeen(hash comm.Uint256) {
 	if this.knownHash.Size() >= common.MAX_CACHE_SIZE {
 		this.knownHash.Pop()
 	}
-	log.Infof("MarkHashAsSeen: hash %x, peer id %x", hash, this.GetID())
 	this.knownHash.Add(hash)
 }
 

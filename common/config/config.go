@@ -172,7 +172,8 @@ var PolarisConfig = &GenesisConfig{
 	SOLO: &SOLOConfig{},
 	// for test
 	DHT: &DHTConfig{
-		UDPPort: DEAFAULT_DHT_UTP_PORT,
+		UDPPort: uint16(DEAFAULT_DHT_UTP_PORT),
+		IP:      "127.0.0.1",
 		Seeds: []DHTNode{
 			{
 				IP:      "127.0.0.1",
@@ -426,7 +427,8 @@ type SOLOConfig struct {
 }
 
 type DHTConfig struct {
-	UDPPort uint      `json:"UDPPort"`
+	UDPPort uint16    `json:"UDPPort"`
+	IP      string    `json:"IP"`
 	Seeds   []DHTNode `json:"Seeds"`
 }
 

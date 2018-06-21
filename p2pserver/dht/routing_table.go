@@ -179,8 +179,6 @@ func (this *routingTable) getLastNodeInBucket(bucket int) *types.Node {
 }
 
 func (this *routingTable) getDistance(id1, id2 types.NodeID) int {
-	//sha1 := sha256.Sum256(id1[:])
-	//sha2 := sha256.Sum256(id2[:])
 	dist := logdist(id1, id2)
 	return dist
 }

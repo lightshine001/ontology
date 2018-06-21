@@ -42,6 +42,9 @@ func (this *DHT) neighborsHandle(from *net.UDPAddr, msg mt.Message) {
 
 	for i := 0; i < len(neighbors.Nodes); i++ {
 		node := &neighbors.Nodes[i]
+		if node.ID == this.nodeID {
+			continue
+		}
 		// ping this node
 		addr, err := getNodeUDPAddr(node)
 		if err != nil {
@@ -122,7 +125,6 @@ func (this *DHT) pongHandle(from *net.UDPAddr, msg mt.Message) {
 	this.addNode(node)
 	// remove node from request pool
 	this.messagePool.DeleteRequest(requesetId)
-	log.Info("receive pong of ", requesetId)
 }
 
 // update the node to bucket when receive message from the node

@@ -81,8 +81,8 @@ func NewServer() *P2PServer {
 		ledger:  ledger.DefLedger,
 	}
 
-	address := "127.0.0.1:" + strconv.Itoa(int(config.DefConfig.Genesis.DHT.UDPPort))
-	nodeID := dt.ConstructID(address)
+	nodeID := dt.ConstructID(config.DefConfig.Genesis.DHT.IP,
+		config.DefConfig.Genesis.DHT.UDPPort)
 	seeds := loadSeeds()
 	p.dht = dht.NewDHT(nodeID, seeds)
 	p.network.SetFeedCh(p.dht.GetFeedCh())
@@ -103,8 +103,7 @@ func loadSeeds() []*dt.Node {
 			UDPPort: node.UDPPort,
 			TCPPort: node.TCPPort,
 		}
-		addr := node.IP + strconv.Itoa(int(node.UDPPort))
-		seed.ID = dt.ConstructID(addr)
+		seed.ID = dt.ConstructID(seed.IP, seed.UDPPort)
 		seeds = append(seeds, seed)
 	}
 	return seeds
@@ -139,13 +138,20 @@ func (this *P2PServer) Start() error {
 }
 
 func (this *P2PServer) DisplayDHT() {
-	timer := time.NewTicker(3 * time.Second)
+	timer := time.NewTicker(10 * time.Second)
 	for {
 		select {
 		case <-timer.C:
 			log.Info("DHT table is:")
 			this.dht.DisplayRoutingTable()
 			log.Info("Neighbor peers: ", this.GetConnectionCnt())
+			peers := this.GetNeighborAddrs()
+			for i, peer := range peers {
+				var ip net.IP
+				ip = peer.IpAddr[:]
+				address := ip.To16().String() + ":" + strconv.Itoa(int(peer.Port))
+				log.Infof("peer %d address is %s", i, address)
+			}
 		}
 	}
 }

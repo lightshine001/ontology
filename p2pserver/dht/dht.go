@@ -63,7 +63,7 @@ func NewDHT(id types.NodeID, seeds []*types.Node) *DHT {
 
 	dht := &DHT{
 		nodeID:       id,
-		addr:         "127.0.0.1",
+		addr:         config.DefConfig.Genesis.DHT.IP,
 		udpPort:      uint16(config.DefConfig.Genesis.DHT.UDPPort),
 		tcpPort:      uint16(config.DefConfig.P2PNode.NodePort),
 		routingTable: &routingTable{},

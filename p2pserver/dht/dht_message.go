@@ -10,6 +10,7 @@ import (
 	mt "github.com/ontio/ontology/p2pserver/message/types"
 	"net"
 	"strconv"
+	"sync"
 )
 
 // findNodeHandle handles a find node message from UDP network
@@ -46,6 +47,7 @@ func (this *DHT) neighborsHandle(from *net.UDPAddr, msg mt.Message) {
 
 	pingReqIds := make([]types.RequestId, 0)
 
+	waitGroup := new(sync.WaitGroup)
 	for i := 0; i < len(neighbors.Nodes); i++ {
 		node := &neighbors.Nodes[i]
 		nodeAddress := node.IP + ":" + strconv.Itoa(int(node.UDPPort))
@@ -60,13 +62,13 @@ func (this *DHT) neighborsHandle(from *net.UDPAddr, msg mt.Message) {
 		if err != nil {
 			continue
 		}
-		reqId, isNewRequest := this.messagePool.AddRequest(node, types.DHT_PING_REQUEST, nil, true)
+		reqId, isNewRequest := this.messagePool.AddRequest(node, types.DHT_PING_REQUEST, nil, waitGroup)
 		if isNewRequest {
 			this.ping(addr)
 		}
 		pingReqIds = append(pingReqIds, reqId)
 	}
-	this.messagePool.Wait(pingReqIds)
+	waitGroup.Wait()
 	liveNodes := make([]*types.Node, 0)
 	for i := 0; i < len(neighbors.Nodes); i++ {
 		node := &neighbors.Nodes[i]
@@ -215,10 +217,10 @@ func (this *DHT) onRequestTimeOut(requestId types.RequestId) {
 		results := make([]*types.Node, 0)
 		this.messagePool.SetResults(results)
 	} else if reqType == types.DHT_PING_REQUEST {
-		pendingNode, ok := this.messagePool.GetSupportData(requestId)
-		if ok && pendingNode != nil {
-			bucketIndex, _ := this.routingTable.locateBucket(pendingNode.ID)
-			this.routingTable.addNode(pendingNode, bucketIndex)
+		replaceNode, ok := this.messagePool.GetReplaceNode(requestId)
+		if ok && replaceNode != nil {
+			bucketIndex, _ := this.routingTable.locateBucket(replaceNode.ID)
+			this.routingTable.addNode(replaceNode, bucketIndex)
 		}
 	}
 }

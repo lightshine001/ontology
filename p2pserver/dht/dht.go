@@ -139,6 +139,7 @@ func (this *DHT) bootstrap() {
 // add node to routing table in synchronize
 func (this *DHT) syncAddNodes(nodes []*types.Node) {
 	waitRequestIds := make([]types.RequestId, 0)
+	waitGroup := new(sync.WaitGroup)
 	for _, node := range nodes {
 		addr, err := getNodeUDPAddr(node)
 		if err != nil {
@@ -146,13 +147,13 @@ func (this *DHT) syncAddNodes(nodes []*types.Node) {
 			continue
 		}
 		requestId, isNewRequest := this.messagePool.AddRequest(node,
-			types.DHT_PING_REQUEST, nil, true)
+			types.DHT_PING_REQUEST, nil, waitGroup)
 		if isNewRequest {
 			this.ping(addr)
 		}
 		waitRequestIds = append(waitRequestIds, requestId)
 	}
-	this.messagePool.Wait(waitRequestIds)
+	waitGroup.Wait()
 }
 
 // GetFeecCh returns the feed event channel
@@ -177,7 +178,7 @@ func (this *DHT) loop() {
 	}
 }
 
-// refreshRoutingTable refreshs k bucket
+// refreshRoutingTable refresh k bucket
 func (this *DHT) refreshRoutingTable() {
 	log.Info("refreshRoutingTable start")
 	// Todo:
@@ -224,7 +225,7 @@ func (this *DHT) lookup(targetID types.NodeID) []*types.Node {
 			pendingQueries++
 			go func() {
 				this.findNode(node, targetID)
-				this.messagePool.AddRequest(node, types.DHT_FIND_NODE_REQUEST, nil, false)
+				this.messagePool.AddRequest(node, types.DHT_FIND_NODE_REQUEST, nil, nil)
 			}()
 		}
 
@@ -304,7 +305,7 @@ func (this *DHT) addNode(remotePeer *types.Node) {
 				return
 			}
 			if _, isNewRequest := this.messagePool.AddRequest(lastNode,
-				types.DHT_PING_REQUEST, remoteNode, false); isNewRequest {
+				types.DHT_PING_REQUEST, remoteNode, nil); isNewRequest {
 				this.ping(addr)
 			}
 		}

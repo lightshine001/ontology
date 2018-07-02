@@ -65,7 +65,7 @@ type P2P interface {
 	AddNbrNode(*peer.Peer)
 	DelNbrNode(id uint64) (*peer.Peer, bool)
 	NodeEstablished(uint64) bool
-	Xmit(msg types.Message, isCons bool)
+	Xmit(msg types.Message, hash oc.Uint256, isCons bool)
 	SetOwnAddress(addr string)
 	IsAddrFromConnecting(addr string) bool
 }

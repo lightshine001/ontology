@@ -84,10 +84,6 @@
         "TCPPort": 40011
       },
       {
-<<<<<<< HEAD
-        "PubKey":"120202fabdf17557e77082be2be61f90527e23187605cd8774d487da4e6bef97943d0d",
-=======
->>>>>>> Decouple DHT ID from public key
         "IP": "127.0.0.1",
         "UDPPort": 50010,
         "TCPPort": 50011

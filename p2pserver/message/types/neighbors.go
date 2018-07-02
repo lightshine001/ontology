@@ -33,18 +33,8 @@ type Neighbors struct {
 	Nodes  []types.Node
 }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 func (this *Neighbors) CmdType() string {
 	return common.DHT_NEIGHBORS
-=======
-type Neighbors struct {
-	P   NeighborsPayload
->>>>>>> fix bug after rebase
-=======
-func (this *Neighbors) CmdType() string {
-	return common.DHT_NEIGHBORS
->>>>>>> clean dht network message
 }
 
 //Serialize message payload
@@ -84,20 +74,12 @@ func (this Neighbors) Serialization() ([]byte, error) {
 			return nil, err
 		}
 	}
-<<<<<<< HEAD
-=======
-
->>>>>>> fix bug after rebase
 	return p.Bytes(), nil
 }
 
 //Deserialize message payload
 func (this *Neighbors) Deserialization(p []byte) error {
 	buf := bytes.NewBuffer(p)
-<<<<<<< HEAD
-=======
-
->>>>>>> fix bug after rebase
 	id, err := serialization.ReadVarBytes(buf)
 	if err != nil {
 		return err

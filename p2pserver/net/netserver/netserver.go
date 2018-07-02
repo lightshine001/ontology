@@ -28,12 +28,6 @@ import (
 	"sync"
 	"time"
 
-<<<<<<< HEAD
-	"bytes"
-	"encoding/binary"
-	"github.com/ontio/ontology-crypto/keypair"
-=======
->>>>>>> Decouple DHT ID from public key
 	oc "github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/config"
 	"github.com/ontio/ontology/common/log"
@@ -48,10 +42,6 @@ import (
 
 //NewNetServer return the net object in p2p
 func NewNetServer() p2p.P2P {
-<<<<<<< HEAD
-=======
-
->>>>>>> Decouple DHT ID from public key
 	n := &NetServer{
 		SyncChan: make(chan *types.MsgPayload, common.CHAN_CAPABILITY),
 		ConsChan: make(chan *types.MsgPayload, common.CHAN_CAPABILITY),
@@ -70,13 +60,11 @@ type NetServer struct {
 	base         peer.PeerCom
 	synclistener net.Listener
 	conslistener net.Listener
-	SyncChan     chan *common.MsgPayload
-	ConsChan     chan *common.MsgPayload
-	feedCh       chan *types.FeedEvent
+	SyncChan     chan *types.MsgPayload
+	ConsChan     chan *types.MsgPayload
+	feedCh       chan *dt.FeedEvent
 	stopLoop     chan struct{}
 	ConnectingNodes
-	feedCh   chan *dt.FeedEvent
-	stopLoop chan struct{}
 	PeerAddrMap
 	Np            *peer.NbrPeers
 	connectLock   sync.Mutex
@@ -155,7 +143,6 @@ func (this *NetServer) init() error {
 //InitListen start listening on the config port
 func (this *NetServer) Start() {
 	this.startListening()
-
 	go this.loop()
 }
 
@@ -440,14 +427,6 @@ func (this *NetServer) Halt() {
 	if this.conslistener != nil {
 		this.conslistener.Close()
 	}
-	if this.stopLoop != nil {
-		this.stopLoop <- struct{}{}
-	}
-
-	if this.stopLoop != nil {
-		this.stopLoop <- struct{}{}
-	}
-
 }
 
 //establishing the connection to remote peers and listening for inbound peers

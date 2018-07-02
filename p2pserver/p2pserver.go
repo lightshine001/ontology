@@ -20,7 +20,6 @@ package p2pserver
 
 import (
 	"encoding/json"
-
 	"errors"
 	"io/ioutil"
 	"math/rand"
@@ -40,7 +39,6 @@ import (
 	"github.com/ontio/ontology/core/types"
 	"github.com/ontio/ontology/p2pserver/common"
 	"github.com/ontio/ontology/p2pserver/dht"
-
 	dt "github.com/ontio/ontology/p2pserver/dht/types"
 	"github.com/ontio/ontology/p2pserver/message/msg_pack"
 	msgtypes "github.com/ontio/ontology/p2pserver/message/types"
@@ -79,7 +77,6 @@ func NewServer() *P2PServer {
 		network: n,
 		ledger:  ledger.DefLedger,
 	}
-
 	nodeID := dt.ConstructID(config.DefConfig.Genesis.DHT.IP,
 		config.DefConfig.Genesis.DHT.UDPPort)
 	seeds := loadSeeds()
@@ -88,6 +85,8 @@ func NewServer() *P2PServer {
 
 	p.msgRouter = utils.NewMsgRouter(p.network)
 	p.blockSync = NewBlockSyncMgr(p)
+	p.recentPeers = make([]string, common.RECENT_LIMIT)
+	p.quitSyncRecent = make(chan bool)
 	p.quitOnline = make(chan bool)
 	p.quitHeartBeat = make(chan bool)
 	return p
@@ -102,28 +101,8 @@ func loadSeeds() []*dt.Node {
 			UDPPort: node.UDPPort,
 			TCPPort: node.TCPPort,
 		}
+		log.Infof("loadSeeds: ip %s port %d", seed.IP, seed.UDPPort)
 		seed.ID = dt.ConstructID(seed.IP, seed.UDPPort)
-		seeds = append(seeds, seed)
-	}
-
-	return seeds
-}
-
-func loadSeeds() []*dt.Node {
-	seeds := make([]*dt.Node, 0, len(config.DefConfig.Genesis.DHT.Seeds))
-	for i := 0; i < len(config.DefConfig.Genesis.DHT.Seeds); i++ {
-		node := config.DefConfig.Genesis.DHT.Seeds[i]
-		pubKey, err := hex.DecodeString(node.PubKey)
-		k, err := keypair.DeserializePublicKey(pubKey)
-		if err != nil {
-			return nil
-		}
-		seed := &dt.Node{
-			IP:      node.IP,
-			UDPPort: node.UDPPort,
-			TCPPort: node.TCPPort,
-		}
-		seed.ID, _ = dt.PubkeyID(k)
 		seeds = append(seeds, seed)
 	}
 	return seeds
@@ -141,14 +120,13 @@ func (this *P2PServer) Start() error {
 	} else {
 		return errors.New("p2p network invalid")
 	}
-
 	if this.msgRouter != nil {
 		this.msgRouter.Start()
 	} else {
 		return errors.New("p2p msg router invalid")
 	}
 	this.tryRecentPeers()
-	go this.connectSeedService()
+	//go this.connectSeedService()
 	go this.syncUpRecentPeers()
 	go this.keepOnlineService()
 	go this.heartBeatService()
@@ -223,7 +201,6 @@ func (this *P2PServer) Xmit(message interface{}) error {
 		log.Debug("TX block message")
 		block := message.(*types.Block)
 		msg = msgpack.NewBlock(block)
-
 		msgHash = block.Hash()
 	case *msgtypes.ConsensusPayload:
 		log.Debug("TX consensus message")
@@ -231,12 +208,10 @@ func (this *P2PServer) Xmit(message interface{}) error {
 		msg = msgpack.NewConsensus(consensusPayload)
 		isConsensus = true
 		msgHash = consensusPayload.Hash()
-
 	case comm.Uint256:
 		log.Debug("TX block hash message")
 		hash := message.(comm.Uint256)
 		// construct inv message
-
 		invPayload := msgpack.NewInvPayload(comm.BLOCK, []comm.Uint256{hash})
 		msg = msgpack.NewInv(invPayload)
 		msgHash = hash
@@ -245,8 +220,7 @@ func (this *P2PServer) Xmit(message interface{}) error {
 			reflect.TypeOf(message))
 		return errors.New("Unknown Xmit message type")
 	}
-	this.network.Xmit(msg, isConsensus)
-
+	this.network.Xmit(msg, msgHash, isConsensus)
 	return nil
 }
 
@@ -453,26 +427,6 @@ func (this *P2PServer) retryInactivePeer() {
 			this.network.Connect(addr, false)
 		}
 
-	}
-}
-
-//connectSeedService make sure seed peer be connected
-func (this *P2PServer) connectSeedService() {
-	t := time.NewTimer(time.Second * common.CONN_MONITOR)
-	for {
-		select {
-		case <-t.C:
-			this.connectSeeds()
-			t.Stop()
-			if this.reachMinConnection() {
-				t.Reset(time.Second * time.Duration(10*common.CONN_MONITOR))
-			} else {
-				t.Reset(time.Second * common.CONN_MONITOR)
-			}
-		case <-this.quitOnline:
-			t.Stop()
-			break
-		}
 	}
 }
 

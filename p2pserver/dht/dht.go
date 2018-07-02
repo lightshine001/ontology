@@ -294,15 +294,7 @@ func (this *DHT) findNode(remotePeer *types.Node, targetID types.NodeID) error {
 // addNode adds a node to the K bucket.
 // remotePeer: added node
 // shouldWait: if ping the lastNode located in the same k bucket of remotePeer, the request should be wait or not
-<<<<<<< HEAD
-<<<<<<< HEAD
 func (this *DHT) addNode(remotePeer *types.Node) {
-=======
-func (this *DHT) addNode(remotePeer *types.Node, shouldWait bool) types.RequestId {
->>>>>>> fix a bug of ping handler, ensure the routing table of a pair of nodes contains each other
-=======
-func (this *DHT) addNode(remotePeer *types.Node) {
->>>>>>> optimize lookup
 	if remotePeer == nil || remotePeer.ID == this.nodeID {
 		return
 	}
@@ -332,15 +324,7 @@ func (this *DHT) addNode(remotePeer *types.Node) {
 			}
 		}
 	}
-<<<<<<< HEAD
-<<<<<<< HEAD
 	return
-=======
-	return ""
->>>>>>> fix a bug of ping handler, ensure the routing table of a pair of nodes contains each other
-=======
-	return
->>>>>>> optimize lookup
 }
 
 // ping the remote node
@@ -352,46 +336,25 @@ func (this *DHT) ping(addr *net.UDPAddr) error {
 	}
 	pingMsg := msgpack.NewDHTPing(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
 	bf := new(bytes.Buffer)
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> Decouple DHT ID from public key
 	err := mt.WriteMessage(bf, pingMsg)
 	if err != nil {
 		log.Info(err)
 		return err
 	}
-<<<<<<< HEAD
-=======
-	mt.WriteMessage(bf, pingMsg)
->>>>>>> clean dht network message
-=======
->>>>>>> Decouple DHT ID from public key
 	this.send(addr, bf.Bytes())
 	return nil
 }
 
 // pong reply remote node when receiving ping
 func (this *DHT) pong(addr *net.UDPAddr) error {
-<<<<<<< HEAD
 
-=======
->>>>>>> clean dht network message
 	ip := net.ParseIP(this.addr).To16()
 	if ip == nil {
 		log.Error("Parse IP address error\n", this.addr)
 		return errors.New("Parse IP address error")
 	}
-<<<<<<< HEAD
-<<<<<<< HEAD
 
 	pongMsg := msgpack.NewDHTPong(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
-=======
-	pongMsg := msgpack.NewDHTPing(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
->>>>>>> clean dht network message
-=======
-	pongMsg := msgpack.NewDHTPong(this.nodeID, this.udpPort, this.tcpPort, ip, addr)
->>>>>>> add unit test file
 	bf := new(bytes.Buffer)
 	mt.WriteMessage(bf, pongMsg)
 	this.send(addr, bf.Bytes())
@@ -407,10 +370,7 @@ func (this *DHT) findNodeReply(addr *net.UDPAddr, targetId types.NodeID) error {
 	bf := new(bytes.Buffer)
 	mt.WriteMessage(bf, neighborsMsg)
 	this.send(addr, bf.Bytes())
-<<<<<<< HEAD
 
-=======
->>>>>>> clean dht network message
 	return nil
 }
 
@@ -425,8 +385,6 @@ func (this *DHT) processPacket(from *net.UDPAddr, packet []byte) {
 	log.Infof("Recv UDP msg %s %v", msgType, from)
 	switch msgType {
 	case common.DHT_PING:
-<<<<<<< HEAD
-<<<<<<< HEAD
 		this.pingHandle(from, msg)
 	case common.DHT_PONG:
 		this.pongHandle(from, msg)
@@ -434,22 +392,6 @@ func (this *DHT) processPacket(from *net.UDPAddr, packet []byte) {
 		this.findNodeHandle(from, msg)
 	case common.DHT_NEIGHBORS:
 		this.neighborsHandle(from, msg)
-=======
-		this.pingHandle(from, packet)
-=======
-		this.pingHandle(from, msg)
->>>>>>> fix dht handle bug
-	case common.DHT_PONG:
-		this.pongHandle(from, msg)
-	case common.DHT_FIND_NODE:
-		this.findNodeHandle(from, msg)
-	case common.DHT_NEIGHBORS:
-<<<<<<< HEAD
-		this.neighborsHandle(from, packet)
->>>>>>> clean dht network message
-=======
-		this.neighborsHandle(from, msg)
->>>>>>> fix dht handle bug
 	default:
 		log.Infof("processPacket: unknown msg %s", msgType)
 	}

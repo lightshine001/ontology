@@ -41,7 +41,7 @@ func (this *NbrPeers) Broadcast(msg types.Message, hash oc.Uint256, isConsensus 
 		if node.syncState == common.ESTABLISH && node.GetRelay() == true {
 			if !node.IsHashContained(hash) {
 				node.MarkHashAsSeen(hash)
-				node.Send(buf, isConsensus)
+				node.Send(msg, isConsensus)
 			}
 		}
 	}

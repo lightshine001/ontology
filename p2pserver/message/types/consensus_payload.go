@@ -41,8 +41,8 @@ type ConsensusPayload struct {
 	Data            []byte
 	Owner           keypair.PublicKey
 	Signature       []byte
-
-	hash *common.Uint256
+	PeerId          uint64
+	hash            *common.Uint256
 }
 
 //get the consensus payload hash

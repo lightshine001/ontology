@@ -127,21 +127,14 @@ func BlockHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args
 		input := &msgCommon.AppendBlock{
 			Block: &block.Blk,
 		}
-		remotePeer.MarkHashAsSeen(block.Blk.Hash())
 		pid.Tell(input)
+		remotePeer.MarkHashAsSeen(block.Blk.Hash())
 	}
 }
 
 // ConsensusHandle handles the consensus message from peer
 func ConsensusHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args ...interface{}) {
 	log.Debugf("receive consensus message:%v,%d", data.Addr, data.Id)
-
-	remotePeer := p2p.GetPeer(data.Id)
-	if remotePeer == nil {
-		log.Error("remotePeer invalid in BlockHandle")
-		return
-	}
-	remotePeer.MarkHashAsSeen(consensus.Cons.Hash())
 
 	remotePeer := p2p.GetPeer(data.Id)
 	if remotePeer == nil {
@@ -155,12 +148,9 @@ func ConsensusHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, 
 			log.Error(err)
 			return
 		}
-<<<<<<< HEAD
 		consensus.Cons.PeerId = data.Id
-=======
-		remotePeer.MarkHashAsSeen(consensus.Cons.Hash())
->>>>>>> clean dht network message
 		actor.ConsensusPid.Tell(&consensus.Cons)
+		remotePeer.MarkHashAsSeen(consensus.Cons.Hash())
 	}
 }
 
@@ -184,7 +174,6 @@ func TransactionHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID
 		return
 	}
 	remotePeer.MarkHashAsSeen(trn.Txn.Hash())
-
 }
 
 // VersionHandle handles version handshake protocol from peer
@@ -435,10 +424,7 @@ func VerAckHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, arg
 			}
 		}
 	}
-<<<<<<< HEAD
-=======
 
->>>>>>> Decouple DHT ID from public key
 }
 
 // DataReqHandle handles the data req(block/Transaction) from peer
@@ -535,11 +521,8 @@ func InvHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args .
 		}
 	case common.BLOCK:
 		log.Debug("receive block message")
-		var i uint32
-		count := inv.P.Cnt
-		log.Debug("receive inv-block message, hash is ", inv.P.Blk)
-		for i = 0; i < count; i++ {
-			id.Deserialize(bytes.NewReader(inv.P.Blk[msgCommon.HASH_LEN*i:]))
+		for _, id = range inv.P.Blk {
+			log.Debug("receive inv-block message, hash is ", id)
 			remotePeer.MarkHashAsSeen(id)
 			// TODO check the ID queue
 			isContainBlock, err := ledger.DefLedger.IsContainBlock(id)

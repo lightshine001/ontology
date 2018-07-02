@@ -39,18 +39,8 @@ type DHTPing struct {
 	DestEndPoint EndPoint
 }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 func (this *DHTPing) CmdType() string {
 	return common.DHT_PING
-=======
-type DHTPing struct {
-	P DHTPingPayload
->>>>>>> fix bug after rebase
-=======
-func (this *DHTPing) CmdType() string {
-	return common.DHT_PING
->>>>>>> clean dht network message
 }
 
 //Serialize message
@@ -121,15 +111,7 @@ func (this *DHTPing) Deserialization(p []byte) error {
 	buf := bytes.NewBuffer(p)
 
 	var err error
-<<<<<<< HEAD
-<<<<<<< HEAD
 	this.Version, err = serialization.ReadUint16(buf)
-=======
-	this.P.Version, err = serialization.ReadUint16(buf)
->>>>>>> fix bug after rebase
-=======
-	this.Version, err = serialization.ReadUint16(buf)
->>>>>>> clean dht network message
 	if err != nil {
 		log.Errorf("failed to deserialize ping version %v", err)
 		return err
@@ -155,10 +137,6 @@ func (this *DHTPing) Deserialization(p []byte) error {
 		return err
 	}
 
-<<<<<<< HEAD
-
-=======
->>>>>>> clean dht network message
 	this.SrcEndPoint.TCPPort, err = serialization.ReadUint16(buf)
 	if err != nil {
 		log.Errorf("failed to deserialize ping src tcp port %v", err)
@@ -171,24 +149,16 @@ func (this *DHTPing) Deserialization(p []byte) error {
 		return err
 	}
 	copy(this.DestEndPoint.Addr[:], addr)
-<<<<<<< HEAD
 
 	this.DestEndPoint.UDPPort, err = serialization.ReadUint16(buf)
 
-=======
-
-	this.DestEndPoint.UDPPort, err = serialization.ReadUint16(buf)
->>>>>>> clean dht network message
 	if err != nil {
 		log.Errorf("failed to deserialize ping dest udp port %v", err)
 		return err
 	}
 
 	this.DestEndPoint.TCPPort, err = serialization.ReadUint16(buf)
-<<<<<<< HEAD
 
-=======
->>>>>>> clean dht network message
 	if err != nil {
 		log.Errorf("failed to deserialize ping dest tcp port %v", err)
 		return err

@@ -21,19 +21,13 @@ package peer
 import (
 	"errors"
 	"fmt"
-	"github.com/fatih/set"
 	"net"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
-<<<<<<< HEAD
 
 	"github.com/fatih/set"
-=======
->>>>>>> Clean code
-
-	"github.com/ontio/ontology-crypto/keypair"
 	comm "github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/p2pserver/common"
@@ -143,18 +137,8 @@ type Peer struct {
 	consState uint32
 	txnCnt    uint64
 	rxTxnCnt  uint64
-	connLock  sync.RWMutex
-
 	knownHash *set.Set
-	//knownHash map[common.Uint256]bool
-	chF chan func() error
-}
-
-//backend run function in backend
-func (this *Peer) backend() {
-	for f := range this.chF {
-		f()
-	}
+	connLock  sync.RWMutex
 }
 
 //NewPeer return new peer without publickey initial
@@ -162,7 +146,6 @@ func NewPeer() *Peer {
 	p := &Peer{
 		syncState: common.INIT,
 		consState: common.INIT,
-		chF:       make(chan func() error),
 		knownHash: set.New(),
 	}
 	p.SyncLink = conn.NewLink()

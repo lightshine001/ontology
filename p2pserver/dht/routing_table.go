@@ -104,10 +104,6 @@ func (this *routingTable) removeNode(id types.NodeID) {
 	defer this.mu.Unlock()
 	_, bucket := this.locateBucket(id)
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> Decouple DHT ID from public key
 	entries := bucket.entries[:0]
 	var node *types.Node
 	for _, entry := range bucket.entries {
@@ -123,21 +119,6 @@ func (this *routingTable) removeNode(id types.NodeID) {
 		feed := &types.FeedEvent{
 			EvtType: types.Del,
 			Event:   node,
-<<<<<<< HEAD
-=======
-	for i, entry := range bucket.entries {
-		if entry.ID == id {
-			log.Infof("remove node id %s ", id.String())
-			bucket.entries = append(bucket.entries[:i], bucket.entries[i+1:]...)
-			feed := &types.FeedEvent{
-				EvtType: types.Del,
-				Event:   id,
-			}
-			this.feedCh <- feed
-			return
->>>>>>> fix a bug of ping handler, ensure the routing table of a pair of nodes contains each other
-=======
->>>>>>> Decouple DHT ID from public key
 		}
 		this.feedCh <- feed
 	}

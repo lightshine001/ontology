@@ -22,6 +22,7 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/ontio/ontology/common/serialization"
 	"github.com/ontio/ontology/core/types"
 	"github.com/ontio/ontology/errors"
 	"github.com/ontio/ontology/p2pserver/common"
@@ -30,6 +31,7 @@ import (
 // Transaction message
 type Trn struct {
 	Txn *types.Transaction
+	Hop uint8
 }
 
 //Serialize message payload
@@ -39,7 +41,10 @@ func (this Trn) Serialization() ([]byte, error) {
 	if err != nil {
 		return nil, errors.NewDetailErr(err, errors.ErrNetPackFail, fmt.Sprintf("serialize error. Txn:%v", this.Txn))
 	}
-
+	err = serialization.WriteUint8(p, this.Hop)
+	if err != nil {
+		return nil, errors.NewDetailErr(err, errors.ErrNetPackFail, fmt.Sprintf("write error. Hop:%v", this.Hop))
+	}
 	return p.Bytes(), nil
 }
 
@@ -56,7 +61,11 @@ func (this *Trn) Deserialization(p []byte) error {
 	if err != nil {
 		return errors.NewDetailErr(err, errors.ErrNetUnPackFail, fmt.Sprintf("read txn error. buf:%v", buf))
 	}
-
 	this.Txn = &tx
+	this.Hop, err = serialization.ReadUint8(buf)
+	if err != nil {
+		return errors.NewDetailErr(err, errors.ErrNetUnPackFail, fmt.Sprintf("read hop error. buf:%v", buf))
+	}
+
 	return nil
 }

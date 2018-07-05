@@ -23,12 +23,14 @@ import (
 	"fmt"
 
 	"github.com/ontio/ontology/common/log"
+	"github.com/ontio/ontology/common/serialization"
 	"github.com/ontio/ontology/errors"
 	"github.com/ontio/ontology/p2pserver/common"
 )
 
 type Consensus struct {
 	Cons ConsensusPayload
+	Hop  uint8
 }
 
 //Serialize message payload
@@ -38,6 +40,11 @@ func (this *Consensus) Serialization() ([]byte, error) {
 	if err != nil {
 		return nil, errors.NewDetailErr(err, errors.ErrNetPackFail, fmt.Sprintf("serialize error. consensus:%v", this.Cons))
 	}
+	err = serialization.WriteUint8(p, this.Hop)
+	if err != nil {
+		return nil, errors.NewDetailErr(err, errors.ErrNetPackFail, fmt.Sprintf("write error. Hop:%v", this.Hop))
+	}
+
 	return p.Bytes(), nil
 }
 
@@ -53,5 +60,10 @@ func (this *Consensus) Deserialization(p []byte) error {
 	if err != nil {
 		return errors.NewDetailErr(err, errors.ErrNetUnPackFail, fmt.Sprintf("deserialize Cons error. buf:%v", buf))
 	}
+	this.Hop, err = serialization.ReadUint8(buf)
+	if err != nil {
+		return errors.NewDetailErr(err, errors.ErrNetUnPackFail, fmt.Sprintf("read hop error. buf:%v", buf))
+	}
+
 	return nil
 }

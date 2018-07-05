@@ -37,7 +37,8 @@ type InvPayload struct {
 }
 
 type Inv struct {
-	P InvPayload
+	P   InvPayload
+	Hop uint8
 }
 
 func (this Inv) invType() common.InventoryType {
@@ -65,6 +66,11 @@ func (this Inv) Serialization() ([]byte, error) {
 		return nil, errors.NewDetailErr(err, errors.ErrNetPackFail, fmt.Sprintf("write error. Blk:%v", this.P.Blk))
 	}
 
+	err = serialization.WriteUint8(p, this.Hop)
+	if err != nil {
+		return nil, errors.NewDetailErr(err, errors.ErrNetPackFail, fmt.Sprintf("write error. Hop:%v", this.Hop))
+	}
+
 	return p.Bytes(), nil
 }
 
@@ -90,6 +96,11 @@ func (this *Inv) Deserialization(p []byte) error {
 			return errors.NewDetailErr(err, errors.ErrNetUnPackFail, fmt.Sprintf("read inv blk error. buf:%v", buf))
 		}
 		this.P.Blk = append(this.P.Blk, blk)
+	}
+
+	this.Hop, err = serialization.ReadUint8(buf)
+	if err != nil {
+		return errors.NewDetailErr(err, errors.ErrNetUnPackFail, fmt.Sprintf("read hop error. buf:%v", buf))
 	}
 	return nil
 }

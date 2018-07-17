@@ -56,7 +56,6 @@ type ConsensusPayload struct {
 	BookkeeperIndex uint16
 	Timestamp       uint32
 	DestID          uint64
-	SrcID           uint64
 	Data            []byte
 	Owner           keypair.PublicKey
 	Signature       []byte
@@ -70,6 +69,11 @@ func (this *ConsensusPayload) Hash() common.Uint256 {
 	}
 	buf := new(bytes.Buffer)
 	this.SerializeUnsigned(buf)
+	err := serialization.WriteVarBytes(buf, keypair.SerializePublicKey(this.Owner))
+	if err != nil {
+		return common.Uint256{}
+	}
+
 	temp := sha256.Sum256(buf.Bytes())
 	hash := common.Uint256(sha256.Sum256(temp[:]))
 
@@ -196,11 +200,6 @@ func (this *ConsensusPayload) SerializeUnsigned(w io.Writer) error {
 	if err != nil {
 		return errors.NewDetailErr(err, errors.ErrNetPackFail, fmt.Sprintf("write error. DestID:%v", this.DestID))
 	}
-	err = serialization.WriteUint64(w, this.SrcID)
-	if err != nil {
-
-		return errors.NewDetailErr(err, errors.ErrNetPackFail, fmt.Sprintf("write error. SrcID:%v", this.DestID))
-	}
 	err = serialization.WriteVarBytes(w, this.Data)
 	if err != nil {
 
@@ -248,12 +247,6 @@ func (this *ConsensusPayload) DeserializeUnsigned(r io.Reader) error {
 	if err != nil {
 
 		return errors.NewDetailErr(err, errors.ErrNetUnPackFail, "read DestID error")
-	}
-
-	this.SrcID, err = serialization.ReadUint64(r)
-	if err != nil {
-
-		return errors.NewDetailErr(err, errors.ErrNetUnPackFail, "read SrcID error")
 	}
 
 	this.Data, err = serialization.ReadVarBytes(r)

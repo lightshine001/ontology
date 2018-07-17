@@ -150,6 +150,11 @@ type AppendBlock struct {
 	Block *types.Block // Block to be added to the ledger
 }
 
+type TransmitConsensusMsgReq struct {
+	Target uint64
+	Msg    interface{}
+}
+
 //ParseIPAddr return ip address
 func ParseIPAddr(s string) (string, error) {
 	i := strings.Index(s, ":")

@@ -21,12 +21,13 @@ package config
 import (
 	"encoding/hex"
 	"fmt"
+	"io"
+
 	"github.com/ontio/ontology-crypto/keypair"
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/constants"
 	"github.com/ontio/ontology/common/serialization"
 	"github.com/ontio/ontology/errors"
-	"io"
 )
 
 var Version = "" //Set value when build project
@@ -439,6 +440,7 @@ func (this *VBFTConfig) Deserialize(r io.Reader) error {
 
 type VBFTPeerStakeInfo struct {
 	Index      uint32 `json:"index"`
+	NetWorkId  uint64 `json:"networkId`
 	PeerPubkey string `json:"peerPubkey"`
 	Address    string `json:"address"`
 	InitPos    uint64 `json:"initPos"`

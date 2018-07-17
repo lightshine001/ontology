@@ -134,7 +134,7 @@ func BlockHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args
 
 // ConsensusHandle handles the consensus message from peer
 func ConsensusHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args ...interface{}) {
-	log.Debugf("receive consensus message:%v,%d", data.Addr, data.Id)
+	log.Errorf("receive consensus message:%v,%d", data.Addr, data.Id)
 
 	remotePeer := p2p.GetPeer(data.Id)
 	if remotePeer == nil {
@@ -148,23 +148,23 @@ func ConsensusHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, 
 			log.Error(err)
 			return
 		}
-		consensus.Cons.PeerId = data.Id
-		actor.ConsensusPid.Tell(&consensus.Cons)
-		remotePeer.MarkHashAsSeen(consensus.Cons.Hash())
+		if consensus.Cons.DestID == 0 || consensus.Cons.DestID == p2p.GetID() {
+			actor.ConsensusPid.Tell(&consensus.Cons)
+		}
 
+		remotePeer.MarkHashAsSeen(consensus.Cons.Hash())
 		consensus.Hop--
+
 		// Relay msg to other remote peers
 		if consensus.Hop > 0 {
-			np := p2p.GetNp()
-			np.RLock()
-			defer np.RUnlock()
-			for _, node := range np.List {
-				if node.GetSyncState() == msgCommon.ESTABLISH && node.GetRelay() == true {
-					if !node.IsHashContained(consensus.Cons.Hash()) {
-						node.MarkHashAsSeen(consensus.Cons.Hash())
-						node.Send(consensus, true)
-					}
+			if consensus.Cons.DestID == 0 {
+				p2p.Xmit(consensus, consensus.Cons.Hash(), true)
+			} else if consensus.Cons.DestID != p2p.GetID() {
+				msg := &msgCommon.TransmitConsensusMsgReq{
+					Target: consensus.Cons.DestID,
+					Msg:    consensus,
 				}
+				pid.Tell(msg)
 			}
 		}
 	}

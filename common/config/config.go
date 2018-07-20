@@ -261,6 +261,30 @@ var MainNetConfig = &GenesisConfig{
 	},
 	DBFT: &DBFTConfig{},
 	SOLO: &SOLOConfig{},
+	DHT: &DHTConfig{
+		UDPPort: uint16(DEAFAULT_DHT_UTP_PORT),
+		IP:      "127.0.0.1",
+		Seeds: []DHTNode{
+			{
+				IP:      "127.0.0.1",
+				UDPPort: 20010,
+				TCPPort: 20011,
+			},
+			{
+				IP:      "127.0.0.1",
+				UDPPort: 30010,
+				TCPPort: 30011},
+			{
+				IP:      "127.0.0.1",
+				UDPPort: 40010,
+				TCPPort: 40011},
+			{
+				IP:      "127.0.0.1",
+				UDPPort: 50010,
+				TCPPort: 50011,
+			},
+		},
+	},
 }
 
 var DefConfig = NewOntologyConfig()
@@ -291,6 +315,7 @@ func (this *GenesisConfig) Reset() {
 	this.VBFT = &VBFTConfig{}
 	this.DBFT = &DBFTConfig{}
 	this.SOLO = &SOLOConfig{}
+	this.DHT = &DHTConfig{}
 }
 
 //

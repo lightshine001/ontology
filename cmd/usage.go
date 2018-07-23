@@ -129,6 +129,7 @@ var AppHelpFlagGroups = []flagGroup{
 		Flags: []cli.Flag{
 			utils.ReservedPeersOnlyFlag,
 			utils.ReservedPeersFileFlag,
+			utils.NetworkMgrFlag,
 			utils.NetworkIdFlag,
 			utils.NodePortFlag,
 			utils.DualPortSupportFlag,

@@ -93,6 +93,7 @@ func setupAPP() *cli.App {
 		utils.GasLimitFlag,
 		utils.PreExecEnableFlag,
 		//p2p setting
+		utils.NetworkMgrFlag,
 		utils.ReservedPeersOnlyFlag,
 		utils.ReservedPeersFileFlag,
 		utils.NetworkIdFlag,

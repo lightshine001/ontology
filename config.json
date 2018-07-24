@@ -1,10 +1,4 @@
 {
-  "SeedList": [
-    "polaris1.ont.io:20338",
-    "polaris2.ont.io:20338",
-    "polaris3.ont.io:20338",
-    "polaris4.ont.io:20338"
-  ],
   "ConsensusType":"vbft",
   "VBFT":{
     "n":7,
@@ -61,32 +55,6 @@
         "peerPubkey":"0251a276e4e25c440307910ab7c1371c606d33ca47a44067d2d6253fa46cb15be0",
         "address": "AXKnzkMNZ7o3wkbyh3hg3auBy2U1boFPkg",
         "initPos":10000
-      }
-    ]
-  },
-  "DHT":{
-    "UDPPort": 20390,
-    "IP":"127.0.0.1",
-    "Seeds":[
-      {
-        "IP": "127.0.0.1",
-        "UDPPort": 20010,
-        "TCPPort": 20011
-      },
-      {
-        "IP": "127.0.0.1",
-        "UDPPort": 30010,
-        "TCPPort": 30011
-      },
-      {
-        "IP": "127.0.0.1",
-        "UDPPort": 40010,
-        "TCPPort": 40011
-      },
-      {
-        "IP": "127.0.0.1",
-        "UDPPort": 50010,
-        "TCPPort": 50011
       }
     ]
   }

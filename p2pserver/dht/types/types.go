@@ -33,6 +33,8 @@ const (
 	FIND_NODE_TIMEOUT = 500 * time.Millisecond
 	DEFAULT_TIMEOUT   = 1 * time.Second
 	REFRESH_INTERVAL  = 1 * time.Hour
+
+	MAX_NEIGHBORS_NUM_IN_MESSAGE = 10
 )
 
 type ptype uint8

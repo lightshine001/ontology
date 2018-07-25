@@ -41,9 +41,9 @@ const (
 	SYNC_BLOCK_REQUEST_TIMEOUT   = 15   //s, Request block timeout time. If block haven't received after SYNC_BLOCK_REQUEST_TIMEOUT second, retry
 )
 
-//SyncFlightInfo record the info of fight object(header or block)
+//SyncFlightInfo record the info of flight object(header or block)
 type SyncFlightInfo struct {
-	Height      uint32         //BlockHeight of HeaderHeight
+	Height      uint32         //BlockHeight or HeaderHeight
 	nodeId      uint64         //The current node to send msg
 	startTime   time.Time      //Request start time
 	failedNodes map[uint64]int //Map nodeId => timeout times
@@ -187,7 +187,8 @@ func (this *BlockSyncMgr) checkTimeout() {
 		}
 		flightInfo.ResetStartTime()
 		flightInfo.MarkFailedNode()
-		log.Infof("checkTimeout sync headers:%d timeout after:%d s Times:%d", height, SYNC_HEADER_REQUEST_TIMEOUT, flightInfo.GetTotalFailedTimes())
+		log.Infof("checkTimeout sync headers:%d timeout after:%d s Times:%d", height,
+			SYNC_HEADER_REQUEST_TIMEOUT, flightInfo.GetTotalFailedTimes())
 		reqNode := this.getNodeWithMinFailedTimes(flightInfo, curBlockHeight)
 		if reqNode == nil {
 			break
@@ -208,7 +209,8 @@ func (this *BlockSyncMgr) checkTimeout() {
 		}
 		flightInfo.ResetStartTime()
 		flightInfo.MarkFailedNode()
-		log.Infof("checkTimeout sync height:%d block:0x%x timeout after:%d s times:%d", flightInfo.Height, blockHash, SYNC_BLOCK_REQUEST_TIMEOUT, flightInfo.GetTotalFailedTimes())
+		log.Infof("checkTimeout sync height:%d block:0x%x timeout after:%d s times:%d", flightInfo.Height,
+			blockHash, SYNC_BLOCK_REQUEST_TIMEOUT, flightInfo.GetTotalFailedTimes())
 		reqNode := this.getNodeWithMinFailedTimes(flightInfo, curBlockHeight)
 		if reqNode == nil {
 			break
@@ -335,7 +337,7 @@ func (this *BlockSyncMgr) OnHeaderReceive(headers []*types.Header) {
 	height := headers[0].Height
 	curHeaderHeight := this.ledger.GetCurrentHeaderHeight()
 
-	//Means another gorountinue is adding header
+	//Means another goroutine is adding header
 	if height <= curHeaderHeight {
 		return
 	}
@@ -384,18 +386,12 @@ func (this *BlockSyncMgr) OnAddNode(nodeId uint64) {
 func (this *BlockSyncMgr) OnDelNode(nodeId uint64) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
-	index := -1
 	for i, id := range this.nodeList {
 		if nodeId == id {
-			index = i
-			break
+			this.nodeList = append(this.nodeList[:i], this.nodeList[i+1:]...)
+			log.Infof("OnDelNode:%d", nodeId)
 		}
 	}
-	if index == -1 {
-		return
-	}
-	this.nodeList = append(this.nodeList[:index], this.nodeList[index+1:]...)
-	log.Infof("OnDelNode:%d", nodeId)
 }
 
 func (this *BlockSyncMgr) tryGetSyncHeaderLock() bool {
@@ -622,6 +618,7 @@ func (this *BlockSyncMgr) getNextNode(nextBlockHeight uint32) *peer.Peer {
 			return nil
 		}
 		_, ok := triedNode[nextNodeId]
+		// after a round, not found the node meet the requirements
 		if ok {
 			return nil
 		}

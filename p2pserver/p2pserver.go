@@ -57,7 +57,7 @@ type P2PServer struct {
 	blockSync *BlockSyncMgr
 	ledger    *ledger.Ledger
 	ReconnectAddrs
-	recentPeers    []dt.Node
+	recentPeers    []*dt.Node
 	quitSyncRecent chan bool
 	quitOnline     chan bool
 	quitHeartBeat  chan bool
@@ -90,7 +90,7 @@ func NewServer() *P2PServer {
 
 	p.msgRouter = utils.NewMsgRouter(p.network)
 	p.blockSync = NewBlockSyncMgr(p)
-	p.recentPeers = make([]dt.Node, 0, common.RECENT_LIMIT)
+	p.recentPeers = make([]*dt.Node, 0, common.RECENT_LIMIT)
 	p.quitSyncRecent = make(chan bool)
 	p.quitOnline = make(chan bool)
 	p.quitHeartBeat = make(chan bool)
@@ -220,7 +220,7 @@ func (this *P2PServer) Xmit(message interface{}) error {
 	return nil
 }
 
-//Send tranfer buffer to peer
+//Send transfer buffer to peer
 func (this *P2PServer) Send(p *peer.Peer, msg msgtypes.Message,
 	isConsensus bool) error {
 	if this.network.IsPeerEstablished(p) {
@@ -311,7 +311,7 @@ func (this *P2PServer) WaitForSyncBlkFinish() {
 			break
 		}
 
-		<-time.After(time.Second * (time.Duration(common.SYNC_BLK_WAIT)))
+		<-time.After(time.Second * common.SYNC_BLK_WAIT)
 	}
 }
 
@@ -591,7 +591,7 @@ func (this *P2PServer) syncPeerAddr() {
 			}
 
 			if !found {
-				node := dt.Node{
+				node := &dt.Node{
 					IP:      addrIp,
 					UDPPort: p.GetUDPPort(),
 					TCPPort: port,

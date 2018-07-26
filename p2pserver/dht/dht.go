@@ -46,18 +46,18 @@ const (
 // route table, the channel to netserver, the udp message queue
 type DHT struct {
 	mu             sync.Mutex
-	version        uint16                 // Local DHT version
-	nodeID         types.NodeID           // Local DHT id
-	routingTable   *routingTable          // The k buckets
-	addr           string                 // Local Address
-	udpPort        uint16                 // Local UDP port
-	tcpPort        uint16                 // Local TCP port
-	conn           *net.UDPConn           // UDP listen fd
-	messagePool    *types.DHTMessagePool  // Manage the request msgs(ping, findNode)
-	recvCh         chan *types.DHTMessage // The queue to receive msg from UDP network
-	bootstrapNodes []*types.Node          // Hold inital nodes from configure and peer file to contact
-	feedCh         chan *types.FeedEvent  // Notify netserver of add/del a remote peer
-	stopCh         chan struct{}          // Stop DHT module
+	version        uint16                       // Local DHT version
+	nodeID         types.NodeID                 // Local DHT id
+	routingTable   *routingTable                // The k buckets
+	addr           string                       // Local Address
+	udpPort        uint16                       // Local UDP port
+	tcpPort        uint16                       // Local TCP port
+	conn           *net.UDPConn                 // UDP listen fd
+	messagePool    *types.DHTMessagePool        // Manage the request msgs(ping, findNode)
+	recvCh         chan *types.DHTMessage       // The queue to receive msg from UDP network
+	bootstrapNodes map[types.NodeID]*types.Node // Hold inital nodes from configure and peer file to contact
+	feedCh         chan *types.FeedEvent        // Notify netserver of add/del a remote peer
+	stopCh         chan struct{}                // Stop DHT module
 
 	whiteList []string
 	blackList []string
@@ -71,7 +71,7 @@ func NewDHT(id types.NodeID) *DHT {
 		udpPort:        uint16(config.DefConfig.P2PNode.NetworkMgrCfg.DHT.UDPPort),
 		tcpPort:        uint16(config.DefConfig.P2PNode.NodePort),
 		routingTable:   &routingTable{},
-		bootstrapNodes: make([]*types.Node, 0),
+		bootstrapNodes: make(map[types.NodeID]*types.Node, 0),
 	}
 
 	dht.init()
@@ -121,7 +121,7 @@ func (this *DHT) Start() {
 	seeds := loadSeeds()
 	for _, seed := range seeds {
 		if seed.ID != this.nodeID {
-			this.bootstrapNodes = append(this.bootstrapNodes, seed)
+			this.bootstrapNodes[seed.ID] = seed
 		}
 	}
 	err := this.listenUDP(":" + strconv.Itoa(int(this.udpPort)))
@@ -149,9 +149,10 @@ func (this *DHT) Stop() {
 }
 
 //SetFallbackNodes appends recent connected peers
-func (this *DHT) SetFallbackNodes(nodes []*types.Node) {
-
-	this.bootstrapNodes = append(this.bootstrapNodes, nodes...)
+func (this *DHT) SetFallbackNodes(nodes []types.Node) {
+	for _, n := range nodes {
+		this.bootstrapNodes[n.ID] = &n
+	}
 }
 
 // bootstrap loads initial node and setup k bucket
@@ -165,7 +166,7 @@ func (this *DHT) bootstrap() {
 }
 
 // add node to routing table in synchronize
-func (this *DHT) syncAddNodes(nodes []*types.Node) {
+func (this *DHT) syncAddNodes(nodes map[types.NodeID]*types.Node) {
 	waitGroup := new(sync.WaitGroup)
 	for _, node := range nodes {
 		addr, err := getNodeUDPAddr(node)

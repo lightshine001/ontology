@@ -386,12 +386,15 @@ func (this *BlockSyncMgr) OnAddNode(nodeId uint64) {
 func (this *BlockSyncMgr) OnDelNode(nodeId uint64) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
-	for i, id := range this.nodeList {
-		if nodeId == id {
-			this.nodeList = append(this.nodeList[:i], this.nodeList[i+1:]...)
-			log.Infof("OnDelNode:%d", nodeId)
+
+	nodeList := this.nodeList[:0]
+	for _, id := range this.nodeList {
+		if nodeId != id {
+			nodeList = append(nodeList, id)
 		}
 	}
+	this.nodeList = nodeList
+	log.Infof("OnDelNode:%d", nodeId)
 }
 
 func (this *BlockSyncMgr) tryGetSyncHeaderLock() bool {

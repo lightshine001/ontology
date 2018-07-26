@@ -166,11 +166,11 @@ func (this *NetServer) handleFeed(event *dt.FeedEvent) {
 	case dt.Add:
 		node := event.Event.(*dt.Node)
 		address := node.IP + ":" + strconv.Itoa(int(node.TCPPort))
-		go this.Connect(address, false)
+		this.Connect(address, false)
 	case dt.Del:
 		node := event.Event.(*dt.Node)
 		address := node.IP + ":" + strconv.Itoa(int(node.TCPPort))
-		go this.disconnectPeer(address)
+		this.disconnectPeer(address)
 	default:
 		log.Infof("handle feed: unknown feed event %d", event.EvtType)
 	}

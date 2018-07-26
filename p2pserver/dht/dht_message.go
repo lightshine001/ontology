@@ -64,7 +64,7 @@ func (this *DHT) neighborsHandle(from *net.UDPAddr, msg mt.Message) {
 	this.messagePool.DeleteRequest(requestId)
 
 	waitGroup := new(sync.WaitGroup)
-	for i := 0; i < len(neighbors.Nodes) && i < types.MAX_NEIGHBORS_NUM_IN_MESSAGE; i++ {
+	for i := 0; i < len(neighbors.Nodes) && i < types.BUCKET_SIZE; i++ {
 		node := &neighbors.Nodes[i]
 		if this.isInBlackList(node.IP) {
 			continue

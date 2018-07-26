@@ -120,7 +120,9 @@ func (this *DHT) init() {
 func (this *DHT) Start() {
 	seeds := loadSeeds()
 	for _, seed := range seeds {
-		this.bootstrapNodes[seed.ID] = seed
+		if seed.ID != this.nodeID {
+			this.bootstrapNodes[seed.ID] = seed
+		}
 	}
 	err := this.listenUDP(":" + strconv.Itoa(int(this.udpPort)))
 	if err != nil {

@@ -555,7 +555,6 @@ func (this *P2PServer) syncUpRecentPeers() {
 			break
 		}
 	}
-
 }
 
 //syncPeerAddr compare snapshot of recent peer with current link,then persist the list
@@ -565,12 +564,12 @@ func (this *P2PServer) syncPeerAddr() {
 		addr := this.recentPeers[i].IP + ":" + strconv.Itoa(int(this.recentPeers[i].TCPPort))
 		p := this.network.GetPeerFromAddr(addr)
 		if p == nil || (p != nil && p.GetSyncState() != common.ESTABLISH) {
-			this.recentPeers[netID] = append(this.recentPeers[netID][:i], this.recentPeers[netID][i+1:]...)
+			this.recentPeers = append(this.recentPeers[:i], this.recentPeers[i+1:]...)
 			changed = true
 			i--
 		}
 	}
-	left := common.RECENT_LIMIT - len(this.recentPeers[netID])
+	left := common.RECENT_LIMIT - len(this.recentPeers)
 	if left > 0 {
 		np := this.network.GetNp()
 		np.Lock()
@@ -612,13 +611,6 @@ func (this *P2PServer) syncPeerAddr() {
 			}
 		}
 		np.Unlock()
-	} else {
-		if left < 0 {
-			left = -left
-			this.recentPeers[netID] = append(this.recentPeers[netID][:0], this.recentPeers[netID][0+left:]...)
-			changed = true
-		}
-
 	}
 	if changed {
 		buf, err := json.Marshal(this.recentPeers)

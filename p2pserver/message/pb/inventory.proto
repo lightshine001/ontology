@@ -17,7 +17,7 @@
  */
 syntax = "proto3";
 
-import "github.com/ontio/ontology/p2pserver/message/pb/data_req.proto";
+import "data_req.proto";
 
 package netpb;
 

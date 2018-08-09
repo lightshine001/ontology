@@ -21,4 +21,5 @@ package netpb;
 
 message Trn {
     bytes Transaction = 1;
+    uint32 Hop = 2;
 }

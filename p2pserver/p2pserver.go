@@ -184,6 +184,7 @@ func (this *P2PServer) GetDHT() *dht.DHT {
 //Xmit called by other module to broadcast msg
 func (this *P2PServer) Xmit(message interface{}) error {
 	log.Debug()
+	//var netMsg *msgtypes.NetMessage
 	var msg msgtypes.Message
 	var msgHash comm.Uint256
 	isConsensus := false

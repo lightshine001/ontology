@@ -293,7 +293,7 @@ func (this *NetServer) NodeEstablished(id uint64) bool {
 }
 
 //Xmit called by actor, broadcast msg
-func (this *NetServer) Xmit(msg types.Message, hash oc.Uint256, isCons bool) {
+func (this *NetServer) Xmit(msg *types.NetMessage, hash oc.Uint256, isCons bool) {
 	this.Np.Broadcast(msg, hash, isCons)
 }
 
@@ -307,7 +307,7 @@ func (this *NetServer) GetMsgChan(isConsensus bool) chan *types.MsgPayload {
 }
 
 //Tx send data buf to peer
-func (this *NetServer) Send(p *peer.Peer, msg types.Message, isConsensus bool) error {
+func (this *NetServer) Send(p *peer.Peer, msg *types.NetMessage, isConsensus bool) error {
 	if p != nil {
 		if config.DefConfig.P2PNode.DualPortSupport == false {
 			return p.Send(msg, false)
@@ -410,7 +410,7 @@ func (this *NetServer) Connect(addr string, isConsensus bool) error {
 		go remotePeer.ConsLink.Rx()
 		remotePeer.SetConsState(common.HAND)
 	}
-	version := msgpack.NewVersion(this, isConsensus, ledger.DefLedger.GetCurrentBlockHeight())
+	version := msgpack.ConstructVersion(this, isConsensus, ledger.DefLedger.GetCurrentBlockHeight())
 	err = remotePeer.Send(version, isConsensus)
 	if err != nil {
 		if !isConsensus {

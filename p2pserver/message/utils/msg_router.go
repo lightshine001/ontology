@@ -104,14 +104,14 @@ func (this *MessageRouter) hookChan(channel chan *types.MsgPayload,
 		select {
 		case data, ok := <-channel:
 			if ok {
-				msgType := data.Payload.CmdType()
+				messageName := data.Payload.MessageName()
 
-				handler, ok := this.msgHandlers[msgType]
+				handler, ok := this.msgHandlers[messageName]
 				if ok {
 					go handler(data, this.p2p, this.pid)
 				} else {
 					log.Info("unknown message handler for the msg: ",
-						msgType)
+						messageName)
 				}
 			}
 		case <-stopCh:

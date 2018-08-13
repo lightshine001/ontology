@@ -184,45 +184,46 @@ func (this *P2PServer) GetDHT() *dht.DHT {
 //Xmit called by other module to broadcast msg
 func (this *P2PServer) Xmit(message interface{}) error {
 	log.Debug()
-	//var netMsg *msgtypes.NetMessage
-	var msg msgtypes.Message
+	var netMsg *msgtypes.NetMessage
+
 	var msgHash comm.Uint256
 	isConsensus := false
 	switch message.(type) {
 	case *types.Transaction:
 		log.Debug("TX transaction message")
 		txn := message.(*types.Transaction)
-		msg = msgpack.NewTxn(txn)
+		netMsg = msgpack.ConstructTxn(txn)
 		msgHash = txn.Hash()
 	case *types.Block:
 		log.Debug("TX block message")
 		block := message.(*types.Block)
-		msg = msgpack.NewBlock(block)
+		netMsg = msgpack.ConstructBlockMsg(block)
 		msgHash = block.Hash()
-	case *msgtypes.ConsensusPayload:
-		log.Debug("TX consensus message")
-		consensusPayload := message.(*msgtypes.ConsensusPayload)
-		msg = msgpack.NewConsensus(consensusPayload)
-		isConsensus = true
-		msgHash = consensusPayload.Hash()
+	/*case *msgtypes.ConsensusPayload:
+	var msg msgtypes.Message
+	log.Debug("TX consensus message")
+	consensusPayload := message.(*msgtypes.ConsensusPayload)
+	msg = msgpack.NewConsensus(consensusPayload)
+	isConsensus = true
+	msgHash = consensusPayload.Hash()*/
 	case comm.Uint256:
 		log.Debug("TX block hash message")
 		hash := message.(comm.Uint256)
 		// construct inv message
-		invPayload := msgpack.NewInvPayload(comm.BLOCK, []comm.Uint256{hash})
-		msg = msgpack.NewInv(invPayload)
+		invPayload := msgpack.ConstructInvPayload(comm.BLOCK, []comm.Uint256{hash})
+		netMsg = msgpack.ConstructInv(invPayload)
 		msgHash = hash
 	default:
 		log.Warnf("Unknown Xmit message %v , type %v", message,
 			reflect.TypeOf(message))
 		return errors.New("Unknown Xmit message type")
 	}
-	this.network.Xmit(msg, msgHash, isConsensus)
+	this.network.Xmit(netMsg, msgHash, isConsensus)
 	return nil
 }
 
 //Send transfer buffer to peer
-func (this *P2PServer) Send(p *peer.Peer, msg msgtypes.Message,
+func (this *P2PServer) Send(p *peer.Peer, msg *msgtypes.NetMessage,
 	isConsensus bool) error {
 	if this.network.IsPeerEstablished(p) {
 		return this.network.Send(p, msg, isConsensus)
@@ -467,7 +468,7 @@ func (this *P2PServer) ping() {
 	for _, p := range peers {
 		if p.GetSyncState() == common.ESTABLISH {
 			height := this.ledger.GetCurrentBlockHeight()
-			ping := msgpack.NewPingMsg(uint64(height))
+			ping := msgpack.ConstructPingMsg(uint64(height))
 			go this.Send(p, ping, false)
 		}
 	}

@@ -27,9 +27,13 @@ import (
 	"io"
 
 	"github.com/golang/protobuf/proto"
+	com "github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/config"
 	"github.com/ontio/ontology/p2pserver/common"
+	"github.com/ontio/ontology/p2pserver/message/pb"
 )
+
+var LastInvHash com.Uint256
 
 type NetMessage struct {
 	messageName string
@@ -71,10 +75,10 @@ type Message interface {
 
 //MsgPayload in link channel
 type MsgPayload struct {
-	Id          uint64  //peer ID
-	Addr        string  //link address
-	PayloadSize uint32  //payload size
-	Payload     Message //msg payload
+	Id          uint64      //peer ID
+	Addr        string      //link address
+	PayloadSize uint32      //payload size
+	Payload     *NetMessage //msg payload
 }
 
 type messageHeader struct {
@@ -121,7 +125,7 @@ func WriteMessage(writer io.Writer, msg Message) error {
 	return err
 }
 
-func ReadMessage(reader io.Reader) (Message, error) {
+func ReadMessage(reader io.Reader) (*NetMessage, error) {
 	hdr, err := readMessageHeader(reader)
 	if err != nil {
 		return nil, err
@@ -149,53 +153,54 @@ func ReadMessage(reader io.Reader) (Message, error) {
 	}
 
 	cmdType := string(bytes.TrimRight(hdr.CMD[:], string(0)))
+
 	msg, err := MakeEmptyMessage(cmdType)
 	if err != nil {
 		return nil, err
 	}
 
-	err = msg.Deserialization(buf)
-	if err != nil {
+	if err := proto.Unmarshal(buf, msg); err != nil {
 		return nil, err
 	}
 
-	return msg, nil
+	netMessage := NewNetMessage(cmdType, msg)
+	return netMessage, nil
 }
 
-func MakeEmptyMessage(cmdType string) (Message, error) {
+func MakeEmptyMessage(cmdType string) (proto.Message, error) {
 	switch cmdType {
 	case common.PING_TYPE:
-		return &Ping{}, nil
+		return &netpb.Ping{}, nil
 	case common.VERSION_TYPE:
-		return &Version{}, nil
+		return &netpb.Version{}, nil
 	case common.VERACK_TYPE:
-		return &VerACK{}, nil
+		return &netpb.VerAck{}, nil
 	case common.ADDR_TYPE:
-		return &Addr{}, nil
+		return &netpb.Addrs{}, nil
 	case common.GetADDR_TYPE:
-		return &AddrReq{}, nil
+		return &netpb.AddrReq{}, nil
 	case common.PONG_TYPE:
-		return &Pong{}, nil
+		return &netpb.Pong{}, nil
 	case common.GET_HEADERS_TYPE:
-		return &HeadersReq{}, nil
+		return &netpb.HeadersReq{}, nil
 	case common.HEADERS_TYPE:
-		return &BlkHeader{}, nil
+		return &netpb.BlkHeader{}, nil
 	case common.INV_TYPE:
-		return &Inv{}, nil
+		return &netpb.Inv{}, nil
 	case common.GET_DATA_TYPE:
-		return &DataReq{}, nil
+		return &netpb.DataReq{}, nil
 	case common.BLOCK_TYPE:
-		return &Block{}, nil
+		return &netpb.Block{}, nil
 	case common.TX_TYPE:
-		return &Trn{}, nil
+		return &netpb.Trn{}, nil
 	case common.CONSENSUS_TYPE:
-		return &Consensus{}, nil
+		return &netpb.Consensus{}, nil
 	case common.NOT_FOUND_TYPE:
-		return &NotFound{}, nil
+		return &netpb.NotFound{}, nil
 	case common.DISCONNECT_TYPE:
-		return &Disconnected{}, nil
+		return &netpb.Disconnected{}, nil
 	case common.GET_BLOCKS_TYPE:
-		return &BlocksReq{}, nil
+		return &netpb.BlocksReq{}, nil
 	default:
 		return nil, errors.New("unsupported cmd type:" + cmdType)
 	}

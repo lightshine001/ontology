@@ -50,7 +50,7 @@ type P2P interface {
 	SetHeight(uint64)
 	SetFeedCh(chan *dt.FeedEvent)
 	IsPeerEstablished(p *peer.Peer) bool
-	Send(p *peer.Peer, msg types.Message, isConsensus bool) error
+	Send(p *peer.Peer, msg *types.NetMessage, isConsensus bool) error
 	GetMsgChan(isConsensus bool) chan *types.MsgPayload
 	GetPeerFromAddr(addr string) *peer.Peer
 	AddOutConnectingList(addr string) (added bool)
@@ -66,7 +66,7 @@ type P2P interface {
 	AddNbrNode(*peer.Peer)
 	DelNbrNode(id uint64) (*peer.Peer, bool)
 	NodeEstablished(uint64) bool
-	Xmit(msg types.Message, hash oc.Uint256, isCons bool)
+	Xmit(msg *types.NetMessage, hash oc.Uint256, isCons bool)
 	SetOwnAddress(addr string)
 	IsAddrFromConnecting(addr string) bool
 }

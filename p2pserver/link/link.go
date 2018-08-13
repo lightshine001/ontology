@@ -133,11 +133,12 @@ func (this *Link) Rx() {
 func (this *Link) disconnectNotify() {
 	this.CloseConn()
 
-	msg, _ := types.MakeEmptyMessage(common.DISCONNECT_TYPE)
+	disconnect, _ := types.MakeEmptyMessage(common.DISCONNECT_TYPE)
+	netMessage := types.NewNetMessage(common.DISCONNECT_TYPE, disconnect)
 	discMsg := &types.MsgPayload{
 		Id:      this.id,
 		Addr:    this.addr,
-		Payload: msg,
+		Payload: netMessage,
 	}
 	this.recvChan <- discMsg
 }
@@ -150,7 +151,7 @@ func (this *Link) CloseConn() {
 	}
 }
 
-func (this *Link) Tx(msg types.Message) error {
+func (this *Link) Tx(msg *types.NetMessage) error {
 	conn := this.conn
 	if conn == nil {
 		return errors.New("tx link invalid")

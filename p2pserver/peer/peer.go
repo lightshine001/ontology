@@ -148,7 +148,7 @@ type Peer struct {
 	consState uint32
 	txnCnt    uint64
 	rxTxnCnt  uint64
-	knownHash *set.Set
+	knownHash set.Interface
 	connLock  sync.RWMutex
 }
 
@@ -157,7 +157,7 @@ func NewPeer() *Peer {
 	p := &Peer{
 		syncState: common.INIT,
 		consState: common.INIT,
-		knownHash: set.New(),
+		knownHash: set.New(set.ThreadSafe),
 	}
 	p.SyncLink = conn.NewLink()
 	p.ConsLink = conn.NewLink()
@@ -252,7 +252,7 @@ func (this *Peer) GetUDPPort() uint16 {
 }
 
 //SendToSync call sync link to send buffer
-func (this *Peer) SendToSync(msg types.Message) error {
+func (this *Peer) SendToSync(msg *types.NetMessage) error {
 	if this.SyncLink != nil && this.SyncLink.Valid() {
 		return this.SyncLink.Tx(msg)
 	}
@@ -260,7 +260,7 @@ func (this *Peer) SendToSync(msg types.Message) error {
 }
 
 //SendToCons call consensus link to send buffer
-func (this *Peer) SendToCons(msg types.Message) error {
+func (this *Peer) SendToCons(msg *types.NetMessage) error {
 	if this.ConsLink != nil && this.ConsLink.Valid() {
 		return this.ConsLink.Tx(msg)
 	}
@@ -348,7 +348,7 @@ func (this *Peer) AttachConsChan(msgchan chan *types.MsgPayload) {
 }
 
 //Send transfer buffer by sync or cons link
-func (this *Peer) Send(msg types.Message, isConsensus bool) error {
+func (this *Peer) Send(msg *types.NetMessage, isConsensus bool) error {
 	if isConsensus && this.ConsLink.Valid() {
 		return this.SendToCons(msg)
 	}

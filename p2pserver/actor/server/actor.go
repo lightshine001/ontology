@@ -19,14 +19,12 @@
 package server
 
 import (
-	"encoding/binary"
 	"reflect"
 
 	"github.com/ontio/ontology-eventbus/actor"
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/p2pserver"
 	"github.com/ontio/ontology/p2pserver/common"
-	"github.com/ontio/ontology/p2pserver/message/types"
 )
 
 type P2PActor struct {
@@ -239,7 +237,7 @@ func (this *P2PActor) handleGetNodeTypeReq(ctx actor.Context, req *GetNodeTypeRe
 
 func (this *P2PActor) handleTransmitConsensusMsgReq(ctx actor.Context,
 	req *common.TransmitConsensusMsgReq) {
-	msg := req.Msg.(*types.Consensus)
+	/*msg := req.Msg.(*types.Consensus)
 	peer := this.server.GetNetWork().GetPeer(req.Target)
 	if peer != nil {
 		this.server.Send(peer, msg, true)
@@ -261,5 +259,5 @@ func (this *P2PActor) handleTransmitConsensusMsgReq(ctx actor.Context,
 			}
 			this.server.Send(peer, msg, true)
 		}
-	}
+	}*/
 }

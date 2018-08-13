@@ -196,7 +196,7 @@ func (this *BlockSyncMgr) checkTimeout() {
 		flightInfo.SetNodeId(reqNode.GetID())
 
 		headerHash := this.ledger.GetCurrentHeaderHash()
-		msg := msgpack.NewHeadersReq(headerHash)
+		msg := msgpack.ConstructHeadersReqMsg(headerHash)
 		err := this.server.Send(reqNode, msg, false)
 		if err != nil {
 			log.Error("checkTimeout failed build a new headersReq")
@@ -217,7 +217,7 @@ func (this *BlockSyncMgr) checkTimeout() {
 		}
 		flightInfo.SetNodeId(reqNode.GetID())
 
-		msg := msgpack.NewBlkDataReq(blockHash)
+		msg := msgpack.ConstructBlkDataReq(blockHash)
 		err := this.server.Send(reqNode, msg, false)
 		if err != nil {
 			log.Error("checkTimeout NewBlkDataReq error:", err)
@@ -262,7 +262,7 @@ func (this *BlockSyncMgr) syncHeader() {
 	this.addFlightHeader(reqNode.GetID(), NextHeaderId)
 
 	headerHash := this.ledger.GetCurrentHeaderHash()
-	msg := msgpack.NewHeadersReq(headerHash)
+	msg := msgpack.ConstructHeadersReqMsg(headerHash)
 	err := this.server.Send(reqNode, msg, false)
 	if err != nil {
 		log.Error("syncHeader failed build a new headersReq")
@@ -318,7 +318,7 @@ func (this *BlockSyncMgr) syncBlock() {
 			return
 		}
 		this.addFlightBlock(reqNode.GetID(), nextBlockHeight, nextBlockHash)
-		msg := msgpack.NewBlkDataReq(nextBlockHash)
+		msg := msgpack.ConstructBlkDataReq(nextBlockHash)
 		err := this.server.Send(reqNode, msg, false)
 		if err != nil {
 			log.Errorf("syncBlock Height:%d ReqBlkData error:%s", nextBlockHeight, err)
@@ -496,7 +496,7 @@ func (this *BlockSyncMgr) saveBlock() {
 				return
 			}
 			this.addFlightBlock(reqNode.GetID(), nextBlockHeight, nextBlock.Hash())
-			msg := msgpack.NewBlkDataReq(nextBlock.Hash())
+			msg := msgpack.ConstructBlkDataReq(nextBlock.Hash())
 			err := this.server.Send(reqNode, msg, false)
 			if err != nil {
 				log.Error("syncBlock error:", err)

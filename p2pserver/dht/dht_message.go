@@ -29,47 +29,56 @@ import (
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/p2pserver/dht/types"
 	"github.com/ontio/ontology/p2pserver/message/msg_pack"
+	"github.com/ontio/ontology/p2pserver/message/pb"
 	mt "github.com/ontio/ontology/p2pserver/message/types"
 )
 
 // findNodeHandle handles a find node message from UDP network
-func (this *DHT) findNodeHandle(from *net.UDPAddr, msg mt.Message) {
-	findNode, ok := msg.(*mt.FindNode)
+func (this *DHT) findNodeHandle(from *net.UDPAddr, msg *mt.NetMessage) {
+	findNode, ok := msg.Content().(*netpb.FindNode)
 	if !ok {
 		log.Error("find node handle detected error message type!")
 		return
 	}
 
-	if node := this.routingTable.queryNode(findNode.FromID); node == nil {
+	var fromID types.NodeID
+	copy(fromID[:], findNode.FromID[:])
+	if node := this.routingTable.queryNode(fromID); node == nil {
 		// findnode must be after ping/pong, in case of DoS attack
 		return
 	}
 
-	this.updateNode(findNode.FromID)
-	this.findNodeReply(from, findNode.TargetID)
+	this.updateNode(fromID)
+	var targetID types.NodeID
+	copy(targetID[:], findNode.TargetID[:])
+	this.findNodeReply(from, targetID)
 }
 
 // neighborsHandle handles a neighbors message from UDP network
-func (this *DHT) neighborsHandle(from *net.UDPAddr, msg mt.Message) {
-	neighbors, ok := msg.(*mt.Neighbors)
+func (this *DHT) neighborsHandle(from *net.UDPAddr, msg *mt.NetMessage) {
+	neighbors, ok := msg.Content().(*netpb.Neighbors)
 	if !ok {
 		log.Error("neighbors handle detected error message type!")
 		return
 	}
-	if node := this.routingTable.queryNode(neighbors.FromID); node == nil {
+	var fromID types.NodeID
+	copy(fromID[:], neighbors.FromID[:])
+	if node := this.routingTable.queryNode(fromID); node == nil {
 		return
 	}
 
-	requestId := types.ConstructRequestId(neighbors.FromID, types.DHT_FIND_NODE_REQUEST)
+	requestId := types.ConstructRequestId(fromID, types.DHT_FIND_NODE_REQUEST)
 	this.messagePool.DeleteRequest(requestId)
 
 	waitGroup := new(sync.WaitGroup)
 	for i := 0; i < len(neighbors.Nodes) && i < types.BUCKET_SIZE; i++ {
-		node := &neighbors.Nodes[i]
-		if this.isInBlackList(node.IP) || !this.isInWhiteList(node.IP) {
+		pbNode := neighbors.Nodes[i]
+		if this.isInBlackList(pbNode.IP) || !this.isInWhiteList(pbNode.IP) {
 			continue
 		}
-		if node.ID == this.nodeID {
+		var id types.NodeID
+		copy(id[:], pbNode.ID[:])
+		if id == this.nodeID {
 			continue
 		}
 
@@ -78,13 +87,20 @@ func (this *DHT) neighborsHandle(from *net.UDPAddr, msg mt.Message) {
 			var index = 0
 			for ; index < whiteListLen; index++ {
 				ip := config.DefConfig.P2PNode.ReservedCfg.ReservedPeers[index]
-				if strings.HasPrefix(node.IP, ip) {
+				if strings.HasPrefix(pbNode.IP, ip) {
 					break
 				}
 			}
 			if index == whiteListLen {
 				continue
 			}
+		}
+
+		node := &types.Node{
+			ID:      id,
+			IP:      pbNode.IP,
+			UDPPort: uint16(pbNode.UDPPort),
+			TCPPort: uint16(pbNode.TCPPort),
 		}
 		// ping this node
 		addr, err := getNodeUDPAddr(node)
@@ -99,24 +115,31 @@ func (this *DHT) neighborsHandle(from *net.UDPAddr, msg mt.Message) {
 	waitGroup.Wait()
 	liveNodes := make([]*types.Node, 0)
 	for i := 0; i < len(neighbors.Nodes); i++ {
-		node := &neighbors.Nodes[i]
+		pbNode := neighbors.Nodes[i]
+		node := &types.Node{
+			IP:      pbNode.IP,
+			UDPPort: uint16(pbNode.UDPPort),
+			TCPPort: uint16(pbNode.TCPPort),
+		}
+		copy(node.ID[:], pbNode.ID[:])
+
 		if queryResult := this.routingTable.queryNode(node.ID); queryResult != nil {
 			liveNodes = append(liveNodes, node)
 		}
 	}
 	this.messagePool.SetResults(liveNodes)
 
-	this.updateNode(neighbors.FromID)
+	this.updateNode(fromID)
 }
 
 // pingHandle handles a ping message from UDP network
-func (this *DHT) pingHandle(from *net.UDPAddr, msg mt.Message) {
-	ping, ok := msg.(*mt.DHTPing)
+func (this *DHT) pingHandle(from *net.UDPAddr, msg *mt.NetMessage) {
+	ping, ok := msg.Content().(*netpb.DHTPing)
 	if !ok {
 		log.Error("ping handle detected error message type!")
 		return
 	}
-	if ping.Version != this.version {
+	if ping.Version != uint32(this.version) {
 		log.Errorf("pingHandle: version is incompatible. local %d remote %d",
 			this.version, ping.Version)
 		return
@@ -124,9 +147,11 @@ func (this *DHT) pingHandle(from *net.UDPAddr, msg mt.Message) {
 
 	// add the node to routing table
 	var node *types.Node
-	if node = this.routingTable.queryNode(ping.FromID); node == nil {
+	var fromID types.NodeID
+	copy(fromID[:], ping.FromID[:])
+	if node = this.routingTable.queryNode(fromID); node == nil {
 		node = &types.Node{
-			ID:      ping.FromID,
+			ID:      fromID,
 			IP:      from.IP.String(),
 			UDPPort: uint16(ping.SrcEndPoint.UDPPort),
 			TCPPort: uint16(ping.SrcEndPoint.TCPPort),
@@ -137,24 +162,26 @@ func (this *DHT) pingHandle(from *net.UDPAddr, msg mt.Message) {
 }
 
 // pongHandle handles a pong message from UDP network
-func (this *DHT) pongHandle(from *net.UDPAddr, msg mt.Message) {
-	pong, ok := msg.(*mt.DHTPong)
+func (this *DHT) pongHandle(from *net.UDPAddr, msg *mt.NetMessage) {
+	pong, ok := msg.Content().(*netpb.DHTPong)
 	if !ok {
 		log.Error("pong handle detected error message type!")
 		return
 	}
-	if pong.Version != this.version {
+	if pong.Version != uint32(this.version) {
 		log.Errorf("pongHandle: version is incompatible. local %d remote %d",
 			this.version, pong.Version)
 		return
 	}
 
-	requestId := types.ConstructRequestId(pong.FromID, types.DHT_PING_REQUEST)
+	var fromID types.NodeID
+	copy(fromID[:], pong.FromID[:])
+	requestId := types.ConstructRequestId(fromID, types.DHT_PING_REQUEST)
 	node, ok := this.messagePool.GetRequestData(requestId)
 	if !ok {
 		// request pool doesn't contain the node, ping timeout
 		log.Infof("pongHandle: from %v ", from)
-		this.routingTable.removeNode(pong.FromID)
+		this.routingTable.removeNode(fromID)
 		return
 	}
 
@@ -180,7 +207,7 @@ func (this *DHT) findNode(remotePeer *types.Node, targetID types.NodeID) error {
 	if err != nil {
 		return err
 	}
-	findNodeMsg := msgpack.NewFindNode(this.nodeID, targetID)
+	findNodeMsg := msgpack.ConstructFindNode(this.nodeID, targetID)
 	bf := new(bytes.Buffer)
 	mt.WriteMessage(bf, findNodeMsg)
 	this.send(addr, bf.Bytes())
@@ -205,7 +232,7 @@ func (this *DHT) findNodeReply(addr *net.UDPAddr, targetId types.NodeID) error {
 		}
 	}
 
-	neighborsMsg := msgpack.NewNeighbors(this.nodeID, nodes)
+	neighborsMsg := msgpack.ConstructNeighbors(this.nodeID, nodes)
 	bf := new(bytes.Buffer)
 	mt.WriteMessage(bf, neighborsMsg)
 	this.send(addr, bf.Bytes())
@@ -220,7 +247,7 @@ func (this *DHT) ping(addr *net.UDPAddr) error {
 		log.Error("Parse IP address error\n", this.addr)
 		return errors.New("Parse IP address error")
 	}
-	pingMsg := msgpack.NewDHTPing(this.nodeID, this.udpPort,
+	pingMsg := msgpack.ConstructDHTPing(this.nodeID, this.udpPort,
 		this.tcpPort, ip, addr, this.version)
 	bf := new(bytes.Buffer)
 	mt.WriteMessage(bf, pingMsg)
@@ -237,7 +264,7 @@ func (this *DHT) pong(addr *net.UDPAddr) error {
 		return errors.New("Parse IP address error")
 	}
 
-	pongMsg := msgpack.NewDHTPong(this.nodeID, this.udpPort,
+	pongMsg := msgpack.ConstructDHTPong(this.nodeID, this.udpPort,
 		this.tcpPort, ip, addr, this.version)
 	bf := new(bytes.Buffer)
 	mt.WriteMessage(bf, pongMsg)

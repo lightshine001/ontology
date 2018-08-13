@@ -348,7 +348,7 @@ func (this *DHT) processPacket(from *net.UDPAddr, packet []byte) {
 		log.Infof("processPacket: receive dht message error: %v", err)
 		return
 	}
-	msgType := msg.CmdType()
+	msgType := msg.MessageName()
 	log.Debugf("processPacket: UDP msg %s from %v", msgType, from)
 	switch msgType {
 	case common.DHT_PING:

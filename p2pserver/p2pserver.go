@@ -420,7 +420,6 @@ func (this *P2PServer) retryInactivePeer() {
 			log.Debug("[p2p]Back off time`s up, start connect node")
 			this.network.Connect(addr, false)
 		}
-
 	}
 }
 
@@ -605,6 +604,10 @@ func (this *P2PServer) syncPeerAddr() {
 			}
 		}
 		np.Unlock()
+	} else if left < 0 {
+		left = -left
+		this.recentPeers = append(this.recentPeers[:0], this.recentPeers[0+left:]...)
+		changed = true
 	}
 	if changed {
 		buf, err := json.Marshal(this.recentPeers)

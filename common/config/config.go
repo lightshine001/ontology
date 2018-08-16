@@ -264,14 +264,6 @@ func NewGenesisConfig() *GenesisConfig {
 	}
 }
 
-func (this *GenesisConfig) Reset() {
-	this.ConsensusType = CONSENSUS_TYPE_DBFT
-	this.SeedList = make([]string, 0)
-	this.VBFT = &VBFTConfig{}
-	this.DBFT = &DBFTConfig{}
-	this.SOLO = &SOLOConfig{}
-}
-
 //
 // VBFT genesis config, from local config file
 //

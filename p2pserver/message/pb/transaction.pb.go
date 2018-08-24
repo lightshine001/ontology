@@ -12,45 +12,148 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
+type TransactionType int32
+
+const (
+	TransactionType_INVALID    TransactionType = 0
+	TransactionType_Bookkeeper TransactionType = 2
+	TransactionType_Deploy     TransactionType = 208
+	TransactionType_Invoke     TransactionType = 209
+)
+
+var TransactionType_name = map[int32]string{
+	0:   "INVALID",
+	2:   "Bookkeeper",
+	208: "Deploy",
+	209: "Invoke",
+}
+var TransactionType_value = map[string]int32{
+	"INVALID":    0,
+	"Bookkeeper": 2,
+	"Deploy":     208,
+	"Invoke":     209,
+}
+
+func (x TransactionType) String() string {
+	return proto.EnumName(TransactionType_name, int32(x))
+}
+func (TransactionType) EnumDescriptor() ([]byte, []int) { return fileDescriptor16, []int{0} }
+
+type Sig struct {
+	InvocationScript   []byte `protobuf:"bytes,1,opt,name=InvocationScript,proto3" json:"InvocationScript,omitempty"`
+	VerificationScript []byte `protobuf:"bytes,2,opt,name=VerificationScript,proto3" json:"VerificationScript,omitempty"`
+}
+
+func (m *Sig) Reset()                    { *m = Sig{} }
+func (m *Sig) String() string            { return proto.CompactTextString(m) }
+func (*Sig) ProtoMessage()               {}
+func (*Sig) Descriptor() ([]byte, []int) { return fileDescriptor16, []int{0} }
+
+func (m *Sig) GetInvocationScript() []byte {
+	if m != nil {
+		return m.InvocationScript
+	}
+	return nil
+}
+
+func (m *Sig) GetVerificationScript() []byte {
+	if m != nil {
+		return m.VerificationScript
+	}
+	return nil
+}
+
+type Transaction struct {
+	Version    uint32          `protobuf:"varint,1,opt,name=Version" json:"Version,omitempty"`
+	TxType     TransactionType `protobuf:"varint,2,opt,name=TxType,enum=netpb.TransactionType" json:"TxType,omitempty"`
+	Nonce      uint32          `protobuf:"varint,3,opt,name=Nonce" json:"Nonce,omitempty"`
+	GasPrice   uint64          `protobuf:"varint,4,opt,name=GasPrice" json:"GasPrice,omitempty"`
+	GasLimit   uint64          `protobuf:"varint,5,opt,name=GasLimit" json:"GasLimit,omitempty"`
+	Payer      []byte          `protobuf:"bytes,6,opt,name=Payer,proto3" json:"Payer,omitempty"`
+	Payload    []byte          `protobuf:"bytes,7,opt,name=Payload,proto3" json:"Payload,omitempty"`
+	Attributes uint32          `protobuf:"varint,8,opt,name=attributes" json:"attributes,omitempty"`
+	Sigs       []*Sig          `protobuf:"bytes,9,rep,name=Sigs" json:"Sigs,omitempty"`
+}
+
+func (m *Transaction) Reset()                    { *m = Transaction{} }
+func (m *Transaction) String() string            { return proto.CompactTextString(m) }
+func (*Transaction) ProtoMessage()               {}
+func (*Transaction) Descriptor() ([]byte, []int) { return fileDescriptor16, []int{1} }
+
+func (m *Transaction) GetVersion() uint32 {
+	if m != nil {
+		return m.Version
+	}
+	return 0
+}
+
+func (m *Transaction) GetTxType() TransactionType {
+	if m != nil {
+		return m.TxType
+	}
+	return TransactionType_INVALID
+}
+
+func (m *Transaction) GetNonce() uint32 {
+	if m != nil {
+		return m.Nonce
+	}
+	return 0
+}
+
+func (m *Transaction) GetGasPrice() uint64 {
+	if m != nil {
+		return m.GasPrice
+	}
+	return 0
+}
+
+func (m *Transaction) GetGasLimit() uint64 {
+	if m != nil {
+		return m.GasLimit
+	}
+	return 0
+}
+
+func (m *Transaction) GetPayer() []byte {
+	if m != nil {
+		return m.Payer
+	}
+	return nil
+}
+
+func (m *Transaction) GetPayload() []byte {
+	if m != nil {
+		return m.Payload
+	}
+	return nil
+}
+
+func (m *Transaction) GetAttributes() uint32 {
+	if m != nil {
+		return m.Attributes
+	}
+	return 0
+}
+
+func (m *Transaction) GetSigs() []*Sig {
+	if m != nil {
+		return m.Sigs
+	}
+	return nil
+}
 
 type Trn struct {
-	Transaction          []byte   `protobuf:"bytes,1,opt,name=Transaction,proto3" json:"Transaction,omitempty"`
-	Hop                  uint32   `protobuf:"varint,2,opt,name=Hop,proto3" json:"Hop,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	Transaction *Transaction `protobuf:"bytes,1,opt,name=Transaction" json:"Transaction,omitempty"`
+	Hop         uint32       `protobuf:"varint,2,opt,name=Hop" json:"Hop,omitempty"`
 }
 
-func (m *Trn) Reset()         { *m = Trn{} }
-func (m *Trn) String() string { return proto.CompactTextString(m) }
-func (*Trn) ProtoMessage()    {}
-func (*Trn) Descriptor() ([]byte, []int) {
-	return fileDescriptor_transaction_7a882f89e5b3dfdc, []int{0}
-}
-func (m *Trn) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_Trn.Unmarshal(m, b)
-}
-func (m *Trn) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_Trn.Marshal(b, m, deterministic)
-}
-func (dst *Trn) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Trn.Merge(dst, src)
-}
-func (m *Trn) XXX_Size() int {
-	return xxx_messageInfo_Trn.Size(m)
-}
-func (m *Trn) XXX_DiscardUnknown() {
-	xxx_messageInfo_Trn.DiscardUnknown(m)
-}
+func (m *Trn) Reset()                    { *m = Trn{} }
+func (m *Trn) String() string            { return proto.CompactTextString(m) }
+func (*Trn) ProtoMessage()               {}
+func (*Trn) Descriptor() ([]byte, []int) { return fileDescriptor16, []int{2} }
 
-var xxx_messageInfo_Trn proto.InternalMessageInfo
-
-func (m *Trn) GetTransaction() []byte {
+func (m *Trn) GetTransaction() *Transaction {
 	if m != nil {
 		return m.Transaction
 	}
@@ -65,17 +168,36 @@ func (m *Trn) GetHop() uint32 {
 }
 
 func init() {
+	proto.RegisterType((*Sig)(nil), "netpb.Sig")
+	proto.RegisterType((*Transaction)(nil), "netpb.Transaction")
 	proto.RegisterType((*Trn)(nil), "netpb.Trn")
+	proto.RegisterEnum("netpb.TransactionType", TransactionType_name, TransactionType_value)
 }
 
-func init() { proto.RegisterFile("transaction.proto", fileDescriptor_transaction_7a882f89e5b3dfdc) }
+func init() { proto.RegisterFile("transaction.proto", fileDescriptor16) }
 
-var fileDescriptor_transaction_7a882f89e5b3dfdc = []byte{
-	// 94 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0x12, 0x2c, 0x29, 0x4a, 0xcc,
-	0x2b, 0x4e, 0x4c, 0x2e, 0xc9, 0xcc, 0xcf, 0xd3, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0xcd,
-	0x4b, 0x2d, 0x29, 0x48, 0x52, 0xb2, 0xe4, 0x62, 0x0e, 0x29, 0xca, 0x13, 0x52, 0xe0, 0xe2, 0x0e,
-	0x41, 0x28, 0x91, 0x60, 0x54, 0x60, 0xd4, 0xe0, 0x09, 0x42, 0x16, 0x12, 0x12, 0xe0, 0x62, 0xf6,
-	0xc8, 0x2f, 0x90, 0x60, 0x52, 0x60, 0xd4, 0xe0, 0x0d, 0x02, 0x31, 0x93, 0xd8, 0xc0, 0x06, 0x19,
-	0x03, 0x02, 0x00, 0x00, 0xff, 0xff, 0x6f, 0x4d, 0xca, 0x3d, 0x5d, 0x00, 0x00, 0x00,
+var fileDescriptor16 = []byte{
+	// 345 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x6c, 0x52, 0xdd, 0x4e, 0xf2, 0x30,
+	0x18, 0xfe, 0xc6, 0x60, 0xf0, 0xbd, 0x13, 0x9c, 0x6f, 0x8c, 0x69, 0x3c, 0x20, 0x84, 0x23, 0xc2,
+	0xc1, 0x0e, 0xd0, 0x1b, 0xd0, 0x90, 0x08, 0x09, 0x12, 0xb2, 0x2d, 0x9c, 0x97, 0x59, 0x49, 0x03,
+	0xb6, 0x4d, 0x57, 0x8d, 0xbb, 0x10, 0xef, 0x4b, 0xef, 0xc8, 0xb4, 0xfc, 0x08, 0xe2, 0x59, 0x9f,
+	0x9f, 0xbe, 0x3f, 0x4f, 0x0b, 0x17, 0x46, 0x53, 0x51, 0xd0, 0xdc, 0x70, 0x29, 0x62, 0xa5, 0xa5,
+	0x91, 0x58, 0x13, 0xcc, 0xa8, 0x45, 0x97, 0x82, 0x9f, 0xf2, 0x25, 0xf6, 0x21, 0x1a, 0x8b, 0x37,
+	0x99, 0x53, 0xeb, 0x48, 0x73, 0xcd, 0x95, 0x21, 0x5e, 0xc7, 0xeb, 0x9d, 0x25, 0x27, 0x3c, 0xc6,
+	0x80, 0x73, 0xa6, 0xf9, 0x33, 0x3f, 0x72, 0x57, 0x9c, 0xfb, 0x0f, 0xa5, 0xfb, 0x51, 0x81, 0x30,
+	0xfb, 0xe9, 0x8f, 0x04, 0xea, 0x73, 0xa6, 0x0b, 0x2e, 0x85, 0x6b, 0xd1, 0x4c, 0x76, 0x10, 0x63,
+	0x08, 0xb2, 0xf7, 0xac, 0x54, 0xcc, 0x55, 0x6b, 0x0d, 0xae, 0x62, 0x37, 0x64, 0x7c, 0x70, 0xdb,
+	0xaa, 0xc9, 0xd6, 0x85, 0x97, 0x50, 0x9b, 0x4a, 0x91, 0x33, 0xe2, 0xbb, 0x3a, 0x1b, 0x80, 0xd7,
+	0xd0, 0x78, 0xa0, 0xc5, 0x4c, 0xf3, 0x9c, 0x91, 0x6a, 0xc7, 0xeb, 0x55, 0x93, 0x3d, 0xde, 0x6a,
+	0x13, 0xfe, 0xc2, 0x0d, 0xa9, 0xed, 0x35, 0x87, 0x6d, 0xb5, 0x19, 0x2d, 0x99, 0x26, 0x81, 0x5b,
+	0x65, 0x03, 0xec, 0xb4, 0x33, 0x5a, 0xae, 0x25, 0x7d, 0x22, 0x75, 0xc7, 0xef, 0x20, 0xb6, 0x01,
+	0xa8, 0x31, 0x9a, 0x2f, 0x5e, 0x0d, 0x2b, 0x48, 0xc3, 0x8d, 0x70, 0xc0, 0x60, 0x1b, 0xaa, 0x29,
+	0x5f, 0x16, 0xe4, 0x7f, 0xc7, 0xef, 0x85, 0x03, 0xd8, 0xee, 0x92, 0xf2, 0x65, 0xe2, 0xf8, 0xee,
+	0x23, 0xf8, 0x99, 0x16, 0x78, 0x7b, 0x94, 0x8e, 0x8b, 0x24, 0x1c, 0xe0, 0xe9, 0xe6, 0xc9, 0x51,
+	0x88, 0x11, 0xf8, 0x23, 0xa9, 0x5c, 0x4e, 0xcd, 0xc4, 0x1e, 0xfb, 0x23, 0x38, 0xff, 0x95, 0x13,
+	0x86, 0x50, 0x1f, 0x4f, 0xe7, 0x77, 0x93, 0xf1, 0x30, 0xfa, 0x87, 0x2d, 0x80, 0x7b, 0x29, 0x57,
+	0x2b, 0xc6, 0x14, 0xd3, 0x51, 0x05, 0x43, 0x08, 0x86, 0x4c, 0xad, 0x65, 0x19, 0x7d, 0x7a, 0x16,
+	0xd8, 0x77, 0x5e, 0xb1, 0xe8, 0xcb, 0x5b, 0x04, 0xee, 0x87, 0xdc, 0x7c, 0x07, 0x00, 0x00, 0xff,
+	0xff, 0xb9, 0x1a, 0x7b, 0xfb, 0x36, 0x02, 0x00, 0x00,
 }

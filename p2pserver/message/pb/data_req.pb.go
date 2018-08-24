@@ -12,12 +12,6 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
-
 type InventoryType int32
 
 const (
@@ -43,41 +37,17 @@ var InventoryType_value = map[string]int32{
 func (x InventoryType) String() string {
 	return proto.EnumName(InventoryType_name, int32(x))
 }
-func (InventoryType) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_data_req_d54e15c8da5e7743, []int{0}
-}
+func (InventoryType) EnumDescriptor() ([]byte, []int) { return fileDescriptor7, []int{0} }
 
 type DataReq struct {
-	DataType             InventoryType `protobuf:"varint,1,opt,name=DataType,proto3,enum=netpb.InventoryType" json:"DataType,omitempty"`
-	Hash                 []byte        `protobuf:"bytes,2,opt,name=Hash,proto3" json:"Hash,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}      `json:"-"`
-	XXX_unrecognized     []byte        `json:"-"`
-	XXX_sizecache        int32         `json:"-"`
+	DataType InventoryType `protobuf:"varint,1,opt,name=DataType,enum=netpb.InventoryType" json:"DataType,omitempty"`
+	Hash     []byte        `protobuf:"bytes,2,opt,name=Hash,proto3" json:"Hash,omitempty"`
 }
 
-func (m *DataReq) Reset()         { *m = DataReq{} }
-func (m *DataReq) String() string { return proto.CompactTextString(m) }
-func (*DataReq) ProtoMessage()    {}
-func (*DataReq) Descriptor() ([]byte, []int) {
-	return fileDescriptor_data_req_d54e15c8da5e7743, []int{0}
-}
-func (m *DataReq) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_DataReq.Unmarshal(m, b)
-}
-func (m *DataReq) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_DataReq.Marshal(b, m, deterministic)
-}
-func (dst *DataReq) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_DataReq.Merge(dst, src)
-}
-func (m *DataReq) XXX_Size() int {
-	return xxx_messageInfo_DataReq.Size(m)
-}
-func (m *DataReq) XXX_DiscardUnknown() {
-	xxx_messageInfo_DataReq.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_DataReq proto.InternalMessageInfo
+func (m *DataReq) Reset()                    { *m = DataReq{} }
+func (m *DataReq) String() string            { return proto.CompactTextString(m) }
+func (*DataReq) ProtoMessage()               {}
+func (*DataReq) Descriptor() ([]byte, []int) { return fileDescriptor7, []int{0} }
 
 func (m *DataReq) GetDataType() InventoryType {
 	if m != nil {
@@ -98,9 +68,9 @@ func init() {
 	proto.RegisterEnum("netpb.InventoryType", InventoryType_name, InventoryType_value)
 }
 
-func init() { proto.RegisterFile("data_req.proto", fileDescriptor_data_req_d54e15c8da5e7743) }
+func init() { proto.RegisterFile("data_req.proto", fileDescriptor7) }
 
-var fileDescriptor_data_req_d54e15c8da5e7743 = []byte{
+var fileDescriptor7 = []byte{
 	// 179 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0x4b, 0x49, 0x2c, 0x49,
 	0x8c, 0x2f, 0x4a, 0x2d, 0xd4, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0xcd, 0x4b, 0x2d, 0x29,

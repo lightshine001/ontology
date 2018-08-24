@@ -12,46 +12,26 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
-
 type Block struct {
-	BlockData            []byte   `protobuf:"bytes,1,opt,name=BlockData,proto3" json:"BlockData,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	Header       *Header        `protobuf:"bytes,1,opt,name=Header" json:"Header,omitempty"`
+	Transactions []*Transaction `protobuf:"bytes,2,rep,name=Transactions" json:"Transactions,omitempty"`
 }
 
-func (m *Block) Reset()         { *m = Block{} }
-func (m *Block) String() string { return proto.CompactTextString(m) }
-func (*Block) ProtoMessage()    {}
-func (*Block) Descriptor() ([]byte, []int) {
-	return fileDescriptor_block_76b9a602c42d57a9, []int{0}
-}
-func (m *Block) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_Block.Unmarshal(m, b)
-}
-func (m *Block) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_Block.Marshal(b, m, deterministic)
-}
-func (dst *Block) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Block.Merge(dst, src)
-}
-func (m *Block) XXX_Size() int {
-	return xxx_messageInfo_Block.Size(m)
-}
-func (m *Block) XXX_DiscardUnknown() {
-	xxx_messageInfo_Block.DiscardUnknown(m)
-}
+func (m *Block) Reset()                    { *m = Block{} }
+func (m *Block) String() string            { return proto.CompactTextString(m) }
+func (*Block) ProtoMessage()               {}
+func (*Block) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{0} }
 
-var xxx_messageInfo_Block proto.InternalMessageInfo
-
-func (m *Block) GetBlockData() []byte {
+func (m *Block) GetHeader() *Header {
 	if m != nil {
-		return m.BlockData
+		return m.Header
+	}
+	return nil
+}
+
+func (m *Block) GetTransactions() []*Transaction {
+	if m != nil {
+		return m.Transactions
 	}
 	return nil
 }
@@ -60,13 +40,17 @@ func init() {
 	proto.RegisterType((*Block)(nil), "netpb.Block")
 }
 
-func init() { proto.RegisterFile("block.proto", fileDescriptor_block_76b9a602c42d57a9) }
+func init() { proto.RegisterFile("block.proto", fileDescriptor4) }
 
-var fileDescriptor_block_76b9a602c42d57a9 = []byte{
-	// 75 bytes of a gzipped FileDescriptorProto
+var fileDescriptor4 = []byte{
+	// 131 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0x4e, 0xca, 0xc9, 0x4f,
-	0xce, 0xd6, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0xcd, 0x4b, 0x2d, 0x29, 0x48, 0x52, 0x52,
-	0xe5, 0x62, 0x75, 0x02, 0x89, 0x0a, 0xc9, 0x70, 0x71, 0x82, 0x19, 0x2e, 0x89, 0x25, 0x89, 0x12,
-	0x8c, 0x0a, 0x8c, 0x1a, 0x3c, 0x41, 0x08, 0x81, 0x24, 0x36, 0xb0, 0x26, 0x63, 0x40, 0x00, 0x00,
-	0x00, 0xff, 0xff, 0x7f, 0xa1, 0x76, 0xd3, 0x43, 0x00, 0x00, 0x00,
+	0xce, 0xd6, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0xcd, 0x4b, 0x2d, 0x29, 0x48, 0x92, 0x12,
+	0x02, 0x8b, 0xc5, 0x67, 0xa4, 0x26, 0xa6, 0xa4, 0x16, 0x41, 0xa4, 0xa4, 0x04, 0x4b, 0x8a, 0x12,
+	0xf3, 0x8a, 0x13, 0x93, 0x4b, 0x32, 0xf3, 0xf3, 0x20, 0x42, 0x4a, 0x69, 0x5c, 0xac, 0x4e, 0x20,
+	0x85, 0x42, 0xaa, 0x5c, 0x6c, 0x1e, 0x60, 0xb5, 0x12, 0x8c, 0x0a, 0x8c, 0x1a, 0xdc, 0x46, 0xbc,
+	0x7a, 0x60, 0x73, 0xf4, 0x20, 0x82, 0x41, 0x50, 0x49, 0x21, 0x33, 0x2e, 0x9e, 0x10, 0x84, 0x21,
+	0xc5, 0x12, 0x4c, 0x0a, 0xcc, 0x1a, 0xdc, 0x46, 0x42, 0x50, 0xc5, 0x48, 0x52, 0x41, 0x28, 0xea,
+	0x92, 0xd8, 0xc0, 0xd6, 0x19, 0x03, 0x02, 0x00, 0x00, 0xff, 0xff, 0x66, 0x98, 0xe4, 0x5a, 0xab,
+	0x00, 0x00, 0x00,
 }

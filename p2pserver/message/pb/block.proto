@@ -17,8 +17,12 @@
  */
 syntax = "proto3";
 
+import "block_header.proto";
+import "transaction.proto";
+
 package netpb;
 
 message Block {
-    bytes BlockData = 1;
+    Header Header = 1;
+    repeated Transaction Transactions = 2;
 }

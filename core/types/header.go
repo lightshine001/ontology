@@ -28,6 +28,7 @@ import (
 	"github.com/ontio/ontology-crypto/keypair"
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/serialization"
+	"github.com/ontio/ontology/p2pserver/message/pb"
 )
 
 type Header struct {
@@ -228,4 +229,65 @@ func (bd *Header) ToArray() []byte {
 	bf := new(bytes.Buffer)
 	bd.Serialize(bf)
 	return bf.Bytes()
+}
+
+func (bd *Header) ToProto() *netpb.Header {
+	pbHeader := &netpb.Header{
+		Version:          bd.Version,
+		PrevBlockHash:    bd.PrevBlockHash[:],
+		TransactionsRoot: bd.TransactionsRoot[:],
+		BlockRoot:        bd.BlockRoot[:],
+		Timestamp:        bd.Timestamp,
+		Height:           bd.Height,
+		ConsensusData:    bd.ConsensusData,
+		ConsensusPayload: bd.ConsensusPayload,
+		NextBookkeeper:   bd.NextBookkeeper[:],
+		Bookkeepers:      make([][]byte, 0, len(bd.Bookkeepers)),
+		SigData:          make([][]byte, 0, len(bd.SigData)),
+	}
+
+	for _, pubkey := range bd.Bookkeepers {
+		pbHeader.Bookkeepers = append(pbHeader.Bookkeepers,
+			keypair.SerializePublicKey(pubkey))
+	}
+
+	for _, sig := range bd.SigData {
+		pbHeader.SigData = append(pbHeader.SigData, sig)
+	}
+	return pbHeader
+}
+
+func (bd *Header) FromProto(pbHeader *netpb.Header) error {
+	var err error
+	bd.Version = pbHeader.Version
+	bd.PrevBlockHash, err = common.Uint256ParseFromBytes(pbHeader.PrevBlockHash)
+	if err != nil {
+		return err
+	}
+	bd.TransactionsRoot, err = common.Uint256ParseFromBytes(pbHeader.TransactionsRoot)
+	if err != nil {
+		return err
+	}
+	bd.BlockRoot, err = common.Uint256ParseFromBytes(pbHeader.BlockRoot)
+	if err != nil {
+		return err
+	}
+	bd.Timestamp = pbHeader.Timestamp
+	bd.Height = pbHeader.Height
+	bd.ConsensusData = pbHeader.ConsensusData
+	copy(bd.ConsensusPayload[:], pbHeader.ConsensusPayload[:])
+	copy(bd.NextBookkeeper[:], pbHeader.NextBookkeeper[:])
+
+	for _, data := range pbHeader.Bookkeepers {
+		pubkey, err := keypair.DeserializePublicKey(data)
+		if err != nil {
+			return err
+		}
+		bd.Bookkeepers = append(bd.Bookkeepers, pubkey)
+	}
+
+	for _, sig := range pbHeader.SigData {
+		bd.SigData = append(bd.SigData, sig)
+	}
+	return nil
 }

@@ -19,7 +19,32 @@ syntax = "proto3";
 
 package netpb;
 
+message Sig  {
+	bytes InvocationScript = 1;
+	bytes VerificationScript = 2;
+}
+
+
+enum TransactionType {
+    INVALID = 0;
+	Bookkeeper  = 0x02;
+	Deploy      = 0xd0;
+	Invoke      = 0xd1;
+}
+
+message Transaction {
+	uint32 Version = 1;
+	TransactionType TxType = 2;
+	uint32 Nonce = 3;
+	uint64 GasPrice = 4;
+	uint64 GasLimit = 5;
+	bytes Payer = 6;
+	bytes Payload = 7;
+	uint32 attributes = 8;
+	repeated Sig Sigs = 9;
+}
+
 message Trn {
-    bytes Transaction = 1;
+    Transaction Transaction = 1;
     uint32 Hop = 2;
 }

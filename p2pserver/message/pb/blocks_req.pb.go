@@ -12,44 +12,16 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
-
 type BlocksReq struct {
-	HeaderHashCount      uint32   `protobuf:"varint,1,opt,name=HeaderHashCount,proto3" json:"HeaderHashCount,omitempty"`
-	HashStart            []byte   `protobuf:"bytes,2,opt,name=HashStart,proto3" json:"HashStart,omitempty"`
-	HashStop             []byte   `protobuf:"bytes,3,opt,name=HashStop,proto3" json:"HashStop,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	HeaderHashCount uint32 `protobuf:"varint,1,opt,name=HeaderHashCount" json:"HeaderHashCount,omitempty"`
+	HashStart       []byte `protobuf:"bytes,2,opt,name=HashStart,proto3" json:"HashStart,omitempty"`
+	HashStop        []byte `protobuf:"bytes,3,opt,name=HashStop,proto3" json:"HashStop,omitempty"`
 }
 
-func (m *BlocksReq) Reset()         { *m = BlocksReq{} }
-func (m *BlocksReq) String() string { return proto.CompactTextString(m) }
-func (*BlocksReq) ProtoMessage()    {}
-func (*BlocksReq) Descriptor() ([]byte, []int) {
-	return fileDescriptor_blocks_req_21fe21bd73b8c344, []int{0}
-}
-func (m *BlocksReq) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_BlocksReq.Unmarshal(m, b)
-}
-func (m *BlocksReq) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_BlocksReq.Marshal(b, m, deterministic)
-}
-func (dst *BlocksReq) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_BlocksReq.Merge(dst, src)
-}
-func (m *BlocksReq) XXX_Size() int {
-	return xxx_messageInfo_BlocksReq.Size(m)
-}
-func (m *BlocksReq) XXX_DiscardUnknown() {
-	xxx_messageInfo_BlocksReq.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_BlocksReq proto.InternalMessageInfo
+func (m *BlocksReq) Reset()                    { *m = BlocksReq{} }
+func (m *BlocksReq) String() string            { return proto.CompactTextString(m) }
+func (*BlocksReq) ProtoMessage()               {}
+func (*BlocksReq) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{0} }
 
 func (m *BlocksReq) GetHeaderHashCount() uint32 {
 	if m != nil {
@@ -76,9 +48,9 @@ func init() {
 	proto.RegisterType((*BlocksReq)(nil), "netpb.BlocksReq")
 }
 
-func init() { proto.RegisterFile("blocks_req.proto", fileDescriptor_blocks_req_21fe21bd73b8c344) }
+func init() { proto.RegisterFile("blocks_req.proto", fileDescriptor5) }
 
-var fileDescriptor_blocks_req_21fe21bd73b8c344 = []byte{
+var fileDescriptor5 = []byte{
 	// 125 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0x12, 0x48, 0xca, 0xc9, 0x4f,
 	0xce, 0x2e, 0x8e, 0x2f, 0x4a, 0x2d, 0xd4, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0xcd, 0x4b,

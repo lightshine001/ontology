@@ -58,6 +58,8 @@ import (
 	"github.com/ontio/ontology/validator/stateful"
 	"github.com/ontio/ontology/validator/stateless"
 	"github.com/urfave/cli"
+	"net/http"
+	_ "net/http/pprof"
 )
 
 func setupAPP() *cli.App {
@@ -183,6 +185,9 @@ func startOntology(ctx *cli.Context) {
 	initNodeInfo(ctx, p2pSvr)
 
 	go logCurrBlockHeight()
+	go func() {
+		http.ListenAndServe(":30331", nil)
+	}()
 	waitToExit()
 }
 

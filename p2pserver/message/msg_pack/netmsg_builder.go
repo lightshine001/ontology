@@ -19,7 +19,6 @@
 package msgpack
 
 import (
-	"bytes"
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/config"
 	"github.com/ontio/ontology/common/log"
@@ -37,39 +36,37 @@ import (
 ///block package
 func ConstructBlockMsg(bk *ct.Block) *mt.NetMessage {
 	log.Debug()
-	p := bytes.NewBuffer(nil)
-	err := bk.Serialize(p)
-	if err != nil {
+	pbBlock := bk.ToProto()
+	if pbBlock == nil {
+		log.Error("failed to convert block to protobuf")
 		return nil
 	}
-	blkMsg := &netpb.Block{
-		BlockData: p.Bytes(),
-	}
-	return mt.NewNetMessage(msgCommon.BLOCK_TYPE, blkMsg)
 
+	return mt.NewNetMessage(msgCommon.BLOCK_TYPE, pbBlock)
 }
 
 //blk hdr package
 func ConstructHeadersMsg(headers []*ct.Header) *mt.NetMessage {
-	headersMsg := &netpb.BlkHeader{
-		BlkHdr: make([][]byte, 0, len(headers)),
+	blkHeader := &netpb.BlkHeader{
+		BlkHdr: make([]*netpb.Header, 0, len(headers)),
 	}
+
 	for _, header := range headers {
-		p := bytes.NewBuffer(nil)
-		err := header.Serialize(p)
-		if err != nil {
+		pbHeader := header.ToProto()
+		if pbHeader == nil {
 			return nil
 		}
-		headersMsg.BlkHdr = append(headersMsg.BlkHdr, p.Bytes())
+		blkHeader.BlkHdr = append(blkHeader.BlkHdr, pbHeader)
 	}
-	return mt.NewNetMessage(msgCommon.HEADERS_TYPE, headersMsg)
+	return mt.NewNetMessage(msgCommon.HEADERS_TYPE, blkHeader)
 }
 
 //blk hdr req package
 func ConstructHeadersReqMsg(curHdrHash common.Uint256) *mt.NetMessage {
 	headersReq := &netpb.HeadersReq{
-		Len:     1,
-		HashEnd: curHdrHash.ToArray(),
+		Len:       1,
+		HashStart: common.UINT256_EMPTY.ToArray(),
+		HashEnd:   curHdrHash.ToArray(),
 	}
 
 	return mt.NewNetMessage(msgCommon.GET_HEADERS_TYPE, headersReq)
@@ -140,13 +137,14 @@ func ConstructPongMsg(height uint64) *mt.NetMessage {
 //Transaction package
 func ConstructTxn(txn *ct.Transaction) *mt.NetMessage {
 	log.Debug()
-	p := bytes.NewBuffer(nil)
-	err := txn.Serialize(p)
-	if err != nil {
+	pbTx := txn.ToProto()
+	if pbTx == nil {
+		log.Error("failed to convert transaction to protobuf")
 		return nil
 	}
+
 	txnMsg := &netpb.Trn{
-		Transaction: p.Bytes(),
+		Transaction: pbTx,
 		Hop:         msgCommon.MAX_HOP,
 	}
 
@@ -186,6 +184,7 @@ func ConstructVersion(n p2pnet.P2P, isCons bool, height uint32) *mt.NetMessage {
 	} else {
 		version.P.Relay = 0
 	}
+	version.P.Cap = make([]byte, 32)
 	if config.DefConfig.P2PNode.HttpInfoPort > 0 {
 		version.P.Cap[msgCommon.HTTP_INFO_FLAG] = 0x01
 	} else {

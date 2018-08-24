@@ -12,42 +12,14 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
-
 type Disconnected struct {
-	Disconnect           bool     `protobuf:"varint,1,opt,name=Disconnect,proto3" json:"Disconnect,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	Disconnect bool `protobuf:"varint,1,opt,name=Disconnect" json:"Disconnect,omitempty"`
 }
 
-func (m *Disconnected) Reset()         { *m = Disconnected{} }
-func (m *Disconnected) String() string { return proto.CompactTextString(m) }
-func (*Disconnected) ProtoMessage()    {}
-func (*Disconnected) Descriptor() ([]byte, []int) {
-	return fileDescriptor_disconnected_9636ae485ac1f9d6, []int{0}
-}
-func (m *Disconnected) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_Disconnected.Unmarshal(m, b)
-}
-func (m *Disconnected) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_Disconnected.Marshal(b, m, deterministic)
-}
-func (dst *Disconnected) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Disconnected.Merge(dst, src)
-}
-func (m *Disconnected) XXX_Size() int {
-	return xxx_messageInfo_Disconnected.Size(m)
-}
-func (m *Disconnected) XXX_DiscardUnknown() {
-	xxx_messageInfo_Disconnected.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_Disconnected proto.InternalMessageInfo
+func (m *Disconnected) Reset()                    { *m = Disconnected{} }
+func (m *Disconnected) String() string            { return proto.CompactTextString(m) }
+func (*Disconnected) ProtoMessage()               {}
+func (*Disconnected) Descriptor() ([]byte, []int) { return fileDescriptor9, []int{0} }
 
 func (m *Disconnected) GetDisconnect() bool {
 	if m != nil {
@@ -60,9 +32,9 @@ func init() {
 	proto.RegisterType((*Disconnected)(nil), "netpb.Disconnected")
 }
 
-func init() { proto.RegisterFile("disconnected.proto", fileDescriptor_disconnected_9636ae485ac1f9d6) }
+func init() { proto.RegisterFile("disconnected.proto", fileDescriptor9) }
 
-var fileDescriptor_disconnected_9636ae485ac1f9d6 = []byte{
+var fileDescriptor9 = []byte{
 	// 78 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0x12, 0x4a, 0xc9, 0x2c, 0x4e,
 	0xce, 0xcf, 0xcb, 0x4b, 0x4d, 0x2e, 0x49, 0x4d, 0xd1, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62,

@@ -12,45 +12,17 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
-
 type Node struct {
-	ID                   []byte   `protobuf:"bytes,1,opt,name=ID,proto3" json:"ID,omitempty"`
-	IP                   string   `protobuf:"bytes,2,opt,name=IP,proto3" json:"IP,omitempty"`
-	UDPPort              uint32   `protobuf:"varint,3,opt,name=UDPPort,proto3" json:"UDPPort,omitempty"`
-	TCPPort              uint32   `protobuf:"varint,4,opt,name=TCPPort,proto3" json:"TCPPort,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	ID      []byte `protobuf:"bytes,1,opt,name=ID,proto3" json:"ID,omitempty"`
+	IP      string `protobuf:"bytes,2,opt,name=IP" json:"IP,omitempty"`
+	UDPPort uint32 `protobuf:"varint,3,opt,name=UDPPort" json:"UDPPort,omitempty"`
+	TCPPort uint32 `protobuf:"varint,4,opt,name=TCPPort" json:"TCPPort,omitempty"`
 }
 
-func (m *Node) Reset()         { *m = Node{} }
-func (m *Node) String() string { return proto.CompactTextString(m) }
-func (*Node) ProtoMessage()    {}
-func (*Node) Descriptor() ([]byte, []int) {
-	return fileDescriptor_neighbors_2a6b1787b03e5038, []int{0}
-}
-func (m *Node) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_Node.Unmarshal(m, b)
-}
-func (m *Node) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_Node.Marshal(b, m, deterministic)
-}
-func (dst *Node) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Node.Merge(dst, src)
-}
-func (m *Node) XXX_Size() int {
-	return xxx_messageInfo_Node.Size(m)
-}
-func (m *Node) XXX_DiscardUnknown() {
-	xxx_messageInfo_Node.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_Node proto.InternalMessageInfo
+func (m *Node) Reset()                    { *m = Node{} }
+func (m *Node) String() string            { return proto.CompactTextString(m) }
+func (*Node) ProtoMessage()               {}
+func (*Node) Descriptor() ([]byte, []int) { return fileDescriptor12, []int{0} }
 
 func (m *Node) GetID() []byte {
 	if m != nil {
@@ -81,36 +53,14 @@ func (m *Node) GetTCPPort() uint32 {
 }
 
 type Neighbors struct {
-	FromID               []byte   `protobuf:"bytes,1,opt,name=FromID,proto3" json:"FromID,omitempty"`
-	Nodes                []*Node  `protobuf:"bytes,2,rep,name=Nodes,proto3" json:"Nodes,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	FromID []byte  `protobuf:"bytes,1,opt,name=FromID,proto3" json:"FromID,omitempty"`
+	Nodes  []*Node `protobuf:"bytes,2,rep,name=Nodes" json:"Nodes,omitempty"`
 }
 
-func (m *Neighbors) Reset()         { *m = Neighbors{} }
-func (m *Neighbors) String() string { return proto.CompactTextString(m) }
-func (*Neighbors) ProtoMessage()    {}
-func (*Neighbors) Descriptor() ([]byte, []int) {
-	return fileDescriptor_neighbors_2a6b1787b03e5038, []int{1}
-}
-func (m *Neighbors) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_Neighbors.Unmarshal(m, b)
-}
-func (m *Neighbors) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_Neighbors.Marshal(b, m, deterministic)
-}
-func (dst *Neighbors) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Neighbors.Merge(dst, src)
-}
-func (m *Neighbors) XXX_Size() int {
-	return xxx_messageInfo_Neighbors.Size(m)
-}
-func (m *Neighbors) XXX_DiscardUnknown() {
-	xxx_messageInfo_Neighbors.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_Neighbors proto.InternalMessageInfo
+func (m *Neighbors) Reset()                    { *m = Neighbors{} }
+func (m *Neighbors) String() string            { return proto.CompactTextString(m) }
+func (*Neighbors) ProtoMessage()               {}
+func (*Neighbors) Descriptor() ([]byte, []int) { return fileDescriptor12, []int{1} }
 
 func (m *Neighbors) GetFromID() []byte {
 	if m != nil {
@@ -131,9 +81,9 @@ func init() {
 	proto.RegisterType((*Neighbors)(nil), "netpb.Neighbors")
 }
 
-func init() { proto.RegisterFile("neighbors.proto", fileDescriptor_neighbors_2a6b1787b03e5038) }
+func init() { proto.RegisterFile("neighbors.proto", fileDescriptor12) }
 
-var fileDescriptor_neighbors_2a6b1787b03e5038 = []byte{
+var fileDescriptor12 = []byte{
 	// 163 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0xcf, 0x4b, 0xcd, 0x4c,
 	0xcf, 0x48, 0xca, 0x2f, 0x2a, 0xd6, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0xcd, 0x4b, 0x2d,

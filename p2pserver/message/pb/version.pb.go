@@ -12,53 +12,25 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
-
 type VersionPayload struct {
-	Version              uint32   `protobuf:"varint,1,opt,name=Version,proto3" json:"Version,omitempty"`
-	Services             uint64   `protobuf:"varint,2,opt,name=Services,proto3" json:"Services,omitempty"`
-	TimeStamp            int64    `protobuf:"varint,3,opt,name=TimeStamp,proto3" json:"TimeStamp,omitempty"`
-	SyncPort             uint32   `protobuf:"varint,4,opt,name=SyncPort,proto3" json:"SyncPort,omitempty"`
-	HttpInfoPort         uint32   `protobuf:"varint,5,opt,name=HttpInfoPort,proto3" json:"HttpInfoPort,omitempty"`
-	ConsPort             uint32   `protobuf:"varint,6,opt,name=ConsPort,proto3" json:"ConsPort,omitempty"`
-	UDPPort              uint32   `protobuf:"varint,7,opt,name=UDPPort,proto3" json:"UDPPort,omitempty"`
-	Cap                  []byte   `protobuf:"bytes,8,opt,name=Cap,proto3" json:"Cap,omitempty"`
-	Nonce                uint64   `protobuf:"varint,9,opt,name=Nonce,proto3" json:"Nonce,omitempty"`
-	StartHeight          uint64   `protobuf:"varint,10,opt,name=StartHeight,proto3" json:"StartHeight,omitempty"`
-	Relay                uint32   `protobuf:"varint,11,opt,name=Relay,proto3" json:"Relay,omitempty"`
-	IsConsensus          bool     `protobuf:"varint,12,opt,name=IsConsensus,proto3" json:"IsConsensus,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	Version      uint32 `protobuf:"varint,1,opt,name=Version" json:"Version,omitempty"`
+	Services     uint64 `protobuf:"varint,2,opt,name=Services" json:"Services,omitempty"`
+	TimeStamp    int64  `protobuf:"varint,3,opt,name=TimeStamp" json:"TimeStamp,omitempty"`
+	SyncPort     uint32 `protobuf:"varint,4,opt,name=SyncPort" json:"SyncPort,omitempty"`
+	HttpInfoPort uint32 `protobuf:"varint,5,opt,name=HttpInfoPort" json:"HttpInfoPort,omitempty"`
+	ConsPort     uint32 `protobuf:"varint,6,opt,name=ConsPort" json:"ConsPort,omitempty"`
+	UDPPort      uint32 `protobuf:"varint,7,opt,name=UDPPort" json:"UDPPort,omitempty"`
+	Cap          []byte `protobuf:"bytes,8,opt,name=Cap,proto3" json:"Cap,omitempty"`
+	Nonce        uint64 `protobuf:"varint,9,opt,name=Nonce" json:"Nonce,omitempty"`
+	StartHeight  uint64 `protobuf:"varint,10,opt,name=StartHeight" json:"StartHeight,omitempty"`
+	Relay        uint32 `protobuf:"varint,11,opt,name=Relay" json:"Relay,omitempty"`
+	IsConsensus  bool   `protobuf:"varint,12,opt,name=IsConsensus" json:"IsConsensus,omitempty"`
 }
 
-func (m *VersionPayload) Reset()         { *m = VersionPayload{} }
-func (m *VersionPayload) String() string { return proto.CompactTextString(m) }
-func (*VersionPayload) ProtoMessage()    {}
-func (*VersionPayload) Descriptor() ([]byte, []int) {
-	return fileDescriptor_version_7485836b320e8601, []int{0}
-}
-func (m *VersionPayload) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_VersionPayload.Unmarshal(m, b)
-}
-func (m *VersionPayload) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_VersionPayload.Marshal(b, m, deterministic)
-}
-func (dst *VersionPayload) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_VersionPayload.Merge(dst, src)
-}
-func (m *VersionPayload) XXX_Size() int {
-	return xxx_messageInfo_VersionPayload.Size(m)
-}
-func (m *VersionPayload) XXX_DiscardUnknown() {
-	xxx_messageInfo_VersionPayload.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_VersionPayload proto.InternalMessageInfo
+func (m *VersionPayload) Reset()                    { *m = VersionPayload{} }
+func (m *VersionPayload) String() string            { return proto.CompactTextString(m) }
+func (*VersionPayload) ProtoMessage()               {}
+func (*VersionPayload) Descriptor() ([]byte, []int) { return fileDescriptor18, []int{0} }
 
 func (m *VersionPayload) GetVersion() uint32 {
 	if m != nil {
@@ -145,35 +117,13 @@ func (m *VersionPayload) GetIsConsensus() bool {
 }
 
 type Version struct {
-	P                    *VersionPayload `protobuf:"bytes,1,opt,name=P,proto3" json:"P,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}        `json:"-"`
-	XXX_unrecognized     []byte          `json:"-"`
-	XXX_sizecache        int32           `json:"-"`
+	P *VersionPayload `protobuf:"bytes,1,opt,name=P" json:"P,omitempty"`
 }
 
-func (m *Version) Reset()         { *m = Version{} }
-func (m *Version) String() string { return proto.CompactTextString(m) }
-func (*Version) ProtoMessage()    {}
-func (*Version) Descriptor() ([]byte, []int) {
-	return fileDescriptor_version_7485836b320e8601, []int{1}
-}
-func (m *Version) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_Version.Unmarshal(m, b)
-}
-func (m *Version) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_Version.Marshal(b, m, deterministic)
-}
-func (dst *Version) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Version.Merge(dst, src)
-}
-func (m *Version) XXX_Size() int {
-	return xxx_messageInfo_Version.Size(m)
-}
-func (m *Version) XXX_DiscardUnknown() {
-	xxx_messageInfo_Version.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_Version proto.InternalMessageInfo
+func (m *Version) Reset()                    { *m = Version{} }
+func (m *Version) String() string            { return proto.CompactTextString(m) }
+func (*Version) ProtoMessage()               {}
+func (*Version) Descriptor() ([]byte, []int) { return fileDescriptor18, []int{1} }
 
 func (m *Version) GetP() *VersionPayload {
 	if m != nil {
@@ -187,9 +137,9 @@ func init() {
 	proto.RegisterType((*Version)(nil), "netpb.Version")
 }
 
-func init() { proto.RegisterFile("version.proto", fileDescriptor_version_7485836b320e8601) }
+func init() { proto.RegisterFile("version.proto", fileDescriptor18) }
 
-var fileDescriptor_version_7485836b320e8601 = []byte{
+var fileDescriptor18 = []byte{
 	// 275 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x54, 0x91, 0x41, 0x4b, 0xc3, 0x30,
 	0x1c, 0xc5, 0xc9, 0xba, 0x6e, 0xdd, 0xbf, 0x9d, 0x48, 0x50, 0x08, 0xe2, 0x21, 0xd4, 0x4b, 0x4f,

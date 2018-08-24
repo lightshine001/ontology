@@ -19,12 +19,15 @@
 package server
 
 import (
+	"encoding/binary"
 	"reflect"
 
 	"github.com/ontio/ontology-eventbus/actor"
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/p2pserver"
 	"github.com/ontio/ontology/p2pserver/common"
+	"github.com/ontio/ontology/p2pserver/message/msg_pack"
+	"github.com/ontio/ontology/p2pserver/message/types"
 )
 
 type P2PActor struct {
@@ -237,10 +240,16 @@ func (this *P2PActor) handleGetNodeTypeReq(ctx actor.Context, req *GetNodeTypeRe
 
 func (this *P2PActor) handleTransmitConsensusMsgReq(ctx actor.Context,
 	req *common.TransmitConsensusMsgReq) {
-	/*msg := req.Msg.(*types.Consensus)
+	msg := req.Msg.(*types.Consensus)
+	pbConsensusPayload := msg.Cons.ToProto(msg.Cons.Hash())
+	netMsg := msgpack.ConsrtuctConsensusMsg(pbConsensusPayload)
+
 	peer := this.server.GetNetWork().GetPeer(req.Target)
 	if peer != nil {
-		this.server.Send(peer, msg, true)
+		err := this.server.Send(peer, netMsg, true)
+		if err != nil {
+			log.Info(err)
+		}
 	} else {
 		dht := this.server.GetDHT()
 		if dht == nil {
@@ -257,7 +266,10 @@ func (this *P2PActor) handleTransmitConsensusMsgReq(ctx actor.Context,
 			if peer == nil {
 				continue
 			}
-			this.server.Send(peer, msg, true)
+			err := this.server.Send(peer, netMsg, true)
+			if err != nil {
+				log.Info(err)
+			}
 		}
-	}*/
+	}
 }

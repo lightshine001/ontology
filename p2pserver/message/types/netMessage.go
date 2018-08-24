@@ -55,17 +55,6 @@ func (this *NetMessage) MessageName() string {
 func (this *NetMessage) Content() proto.Message {
 	return this.content
 }
-func (this *NetMessage) Serialization() ([]byte, error) {
-	return nil, nil
-}
-
-func (this *NetMessage) Deserialization([]byte) error {
-	return nil
-}
-
-func (this *NetMessage) CmdType() string {
-	return ""
-}
 
 type Message interface {
 	Serialization() ([]byte, error)
@@ -107,21 +96,22 @@ func newMessageHeader(cmd string, length uint32, checksum [common.CHECKSUM_LEN]b
 	return msgh
 }
 
-func WriteMessage(writer io.Writer, msg Message) error {
-	buf, err := msg.Serialization()
+func WriteMessage(writer io.Writer, msg *NetMessage) error {
+	data, err := proto.Marshal(msg.Content())
 	if err != nil {
 		return err
 	}
-	checksum := CheckSum(buf)
 
-	hdr := newMessageHeader(msg.CmdType(), uint32(len(buf)), checksum)
+	checksum := CheckSum(data)
+
+	hdr := newMessageHeader(msg.MessageName(), uint32(len(data)), checksum)
 
 	err = writeMessageHeader(writer, hdr)
 	if err != nil {
 		return err
 	}
 
-	_, err = writer.Write(buf)
+	_, err = writer.Write(data)
 	return err
 }
 
@@ -201,6 +191,14 @@ func MakeEmptyMessage(cmdType string) (proto.Message, error) {
 		return &netpb.Disconnected{}, nil
 	case common.GET_BLOCKS_TYPE:
 		return &netpb.BlocksReq{}, nil
+	case common.DHT_PING:
+		return &netpb.DHTPing{}, nil
+	case common.DHT_PONG:
+		return &netpb.DHTPong{}, nil
+	case common.DHT_FIND_NODE:
+		return &netpb.FindNode{}, nil
+	case common.DHT_NEIGHBORS:
+		return &netpb.Neighbors{}, nil
 	default:
 		return nil, errors.New("unsupported cmd type:" + cmdType)
 	}

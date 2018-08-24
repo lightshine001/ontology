@@ -31,6 +31,7 @@ import (
 	"github.com/ontio/ontology/core/payload"
 	"github.com/ontio/ontology/core/program"
 	"github.com/ontio/ontology/errors"
+	"github.com/ontio/ontology/p2pserver/message/pb"
 )
 
 type Transaction struct {
@@ -316,5 +317,90 @@ func (tx *Transaction) Type() common.InventoryType {
 
 func (tx *Transaction) Verify() error {
 	panic("unimplemented ")
+	return nil
+}
+
+func (tx *Transaction) ToProto() *netpb.Transaction {
+	if tx.Payload == nil {
+		return nil
+	}
+	p := bytes.NewBuffer(nil)
+	err := tx.Payload.Serialize(p)
+	if err != nil {
+		return nil
+	}
+	pbTransaction := &netpb.Transaction{
+		Version:    uint32(tx.Version),
+		TxType:     netpb.TransactionType(tx.TxType),
+		Nonce:      tx.Nonce,
+		GasPrice:   tx.GasPrice,
+		GasLimit:   tx.GasLimit,
+		Payer:      tx.Payer[:],
+		Payload:    p.Bytes(),
+		Attributes: uint32(tx.attributes),
+	}
+
+	for _, sig := range tx.Sigs {
+		invocationScript := program.ProgramFromParams(sig.SigData)
+		var verificationScript []byte
+		if len(sig.PubKeys) == 0 {
+			return nil
+		} else if len(sig.PubKeys) == 1 {
+			verificationScript = program.ProgramFromPubKey(sig.PubKeys[0])
+		} else {
+			script, err := program.ProgramFromMultiPubKey(sig.PubKeys, int(sig.M))
+			if err != nil {
+				return nil
+			}
+			verificationScript = script
+		}
+		pbSig := &netpb.Sig{
+			InvocationScript:   invocationScript,
+			VerificationScript: verificationScript,
+		}
+		pbTransaction.Sigs = append(pbTransaction.Sigs, pbSig)
+	}
+
+	return pbTransaction
+}
+
+func (tx *Transaction) FromProto(pbTx *netpb.Transaction) error {
+	tx.Version = byte(pbTx.Version)
+	tx.TxType = TransactionType(pbTx.TxType)
+	tx.Nonce = pbTx.Nonce
+	tx.GasPrice = pbTx.GasPrice
+	tx.GasLimit = pbTx.GasLimit
+	copy(tx.Payer[:], pbTx.Payer[:])
+
+	switch tx.TxType {
+	case Invoke:
+		tx.Payload = new(payload.InvokeCode)
+	case Deploy:
+		tx.Payload = new(payload.DeployCode)
+	default:
+		return fmt.Errorf("unsupportted tx type %v", tx.TxType)
+	}
+
+	buf := bytes.NewBuffer(pbTx.Payload)
+	err := tx.Payload.Deserialize(buf)
+	if err != nil {
+		return fmt.Errorf("failed to parse transaction payload, err %v", err)
+	}
+
+	for _, pbSig := range pbTx.Sigs {
+		sig := new(Sig)
+		data, err := program.GetParamInfo(pbSig.InvocationScript)
+		if err != nil {
+			return fmt.Errorf("failed to get param info from invocationscript, err %v", err)
+		}
+		info, err := program.GetProgramInfo(pbSig.VerificationScript)
+		if err != nil {
+			return fmt.Errorf("failed to get program info from verificationscript, err %v", err)
+		}
+		sig.SigData = data
+		sig.M = info.M
+		sig.PubKeys = info.PubKeys
+		tx.Sigs = append(tx.Sigs, sig)
+	}
 	return nil
 }

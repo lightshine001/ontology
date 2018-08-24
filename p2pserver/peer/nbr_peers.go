@@ -45,7 +45,10 @@ func (this *NbrPeers) Broadcast(msg *types.NetMessage, hash oc.Uint256, isConsen
 					continue
 				}
 				node.MarkHashAsSeen(hash)
-				node.Send(msg, isConsensus)
+				err := node.Send(msg, isConsensus)
+				if err != nil {
+					fmt.Println(err)
+				}
 			}
 		}
 	}

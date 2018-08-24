@@ -12,44 +12,16 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
-
 type EndPoint struct {
-	Addr                 []byte   `protobuf:"bytes,1,opt,name=Addr,proto3" json:"Addr,omitempty"`
-	UDPPort              uint32   `protobuf:"varint,2,opt,name=UDPPort,proto3" json:"UDPPort,omitempty"`
-	TCPPort              uint32   `protobuf:"varint,3,opt,name=TCPPort,proto3" json:"TCPPort,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	Addr    []byte `protobuf:"bytes,1,opt,name=Addr,proto3" json:"Addr,omitempty"`
+	UDPPort uint32 `protobuf:"varint,2,opt,name=UDPPort" json:"UDPPort,omitempty"`
+	TCPPort uint32 `protobuf:"varint,3,opt,name=TCPPort" json:"TCPPort,omitempty"`
 }
 
-func (m *EndPoint) Reset()         { *m = EndPoint{} }
-func (m *EndPoint) String() string { return proto.CompactTextString(m) }
-func (*EndPoint) ProtoMessage()    {}
-func (*EndPoint) Descriptor() ([]byte, []int) {
-	return fileDescriptor_dht_pingpong_da5cf8d09e8d4ef0, []int{0}
-}
-func (m *EndPoint) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_EndPoint.Unmarshal(m, b)
-}
-func (m *EndPoint) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_EndPoint.Marshal(b, m, deterministic)
-}
-func (dst *EndPoint) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_EndPoint.Merge(dst, src)
-}
-func (m *EndPoint) XXX_Size() int {
-	return xxx_messageInfo_EndPoint.Size(m)
-}
-func (m *EndPoint) XXX_DiscardUnknown() {
-	xxx_messageInfo_EndPoint.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_EndPoint proto.InternalMessageInfo
+func (m *EndPoint) Reset()                    { *m = EndPoint{} }
+func (m *EndPoint) String() string            { return proto.CompactTextString(m) }
+func (*EndPoint) ProtoMessage()               {}
+func (*EndPoint) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{0} }
 
 func (m *EndPoint) GetAddr() []byte {
 	if m != nil {
@@ -73,38 +45,16 @@ func (m *EndPoint) GetTCPPort() uint32 {
 }
 
 type DHTPing struct {
-	Version              uint32    `protobuf:"varint,1,opt,name=Version,proto3" json:"Version,omitempty"`
-	FromID               []byte    `protobuf:"bytes,2,opt,name=FromID,proto3" json:"FromID,omitempty"`
-	SrcEndPoint          *EndPoint `protobuf:"bytes,3,opt,name=SrcEndPoint,proto3" json:"SrcEndPoint,omitempty"`
-	DestEndPoint         *EndPoint `protobuf:"bytes,4,opt,name=DestEndPoint,proto3" json:"DestEndPoint,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}  `json:"-"`
-	XXX_unrecognized     []byte    `json:"-"`
-	XXX_sizecache        int32     `json:"-"`
+	Version      uint32    `protobuf:"varint,1,opt,name=Version" json:"Version,omitempty"`
+	FromID       []byte    `protobuf:"bytes,2,opt,name=FromID,proto3" json:"FromID,omitempty"`
+	SrcEndPoint  *EndPoint `protobuf:"bytes,3,opt,name=SrcEndPoint" json:"SrcEndPoint,omitempty"`
+	DestEndPoint *EndPoint `protobuf:"bytes,4,opt,name=DestEndPoint" json:"DestEndPoint,omitempty"`
 }
 
-func (m *DHTPing) Reset()         { *m = DHTPing{} }
-func (m *DHTPing) String() string { return proto.CompactTextString(m) }
-func (*DHTPing) ProtoMessage()    {}
-func (*DHTPing) Descriptor() ([]byte, []int) {
-	return fileDescriptor_dht_pingpong_da5cf8d09e8d4ef0, []int{1}
-}
-func (m *DHTPing) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_DHTPing.Unmarshal(m, b)
-}
-func (m *DHTPing) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_DHTPing.Marshal(b, m, deterministic)
-}
-func (dst *DHTPing) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_DHTPing.Merge(dst, src)
-}
-func (m *DHTPing) XXX_Size() int {
-	return xxx_messageInfo_DHTPing.Size(m)
-}
-func (m *DHTPing) XXX_DiscardUnknown() {
-	xxx_messageInfo_DHTPing.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_DHTPing proto.InternalMessageInfo
+func (m *DHTPing) Reset()                    { *m = DHTPing{} }
+func (m *DHTPing) String() string            { return proto.CompactTextString(m) }
+func (*DHTPing) ProtoMessage()               {}
+func (*DHTPing) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{1} }
 
 func (m *DHTPing) GetVersion() uint32 {
 	if m != nil {
@@ -135,38 +85,16 @@ func (m *DHTPing) GetDestEndPoint() *EndPoint {
 }
 
 type DHTPong struct {
-	Version              uint32    `protobuf:"varint,1,opt,name=Version,proto3" json:"Version,omitempty"`
-	FromID               []byte    `protobuf:"bytes,2,opt,name=FromID,proto3" json:"FromID,omitempty"`
-	SrcEndPoint          *EndPoint `protobuf:"bytes,3,opt,name=SrcEndPoint,proto3" json:"SrcEndPoint,omitempty"`
-	DestEndPoint         *EndPoint `protobuf:"bytes,4,opt,name=DestEndPoint,proto3" json:"DestEndPoint,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}  `json:"-"`
-	XXX_unrecognized     []byte    `json:"-"`
-	XXX_sizecache        int32     `json:"-"`
+	Version      uint32    `protobuf:"varint,1,opt,name=Version" json:"Version,omitempty"`
+	FromID       []byte    `protobuf:"bytes,2,opt,name=FromID,proto3" json:"FromID,omitempty"`
+	SrcEndPoint  *EndPoint `protobuf:"bytes,3,opt,name=SrcEndPoint" json:"SrcEndPoint,omitempty"`
+	DestEndPoint *EndPoint `protobuf:"bytes,4,opt,name=DestEndPoint" json:"DestEndPoint,omitempty"`
 }
 
-func (m *DHTPong) Reset()         { *m = DHTPong{} }
-func (m *DHTPong) String() string { return proto.CompactTextString(m) }
-func (*DHTPong) ProtoMessage()    {}
-func (*DHTPong) Descriptor() ([]byte, []int) {
-	return fileDescriptor_dht_pingpong_da5cf8d09e8d4ef0, []int{2}
-}
-func (m *DHTPong) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_DHTPong.Unmarshal(m, b)
-}
-func (m *DHTPong) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_DHTPong.Marshal(b, m, deterministic)
-}
-func (dst *DHTPong) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_DHTPong.Merge(dst, src)
-}
-func (m *DHTPong) XXX_Size() int {
-	return xxx_messageInfo_DHTPong.Size(m)
-}
-func (m *DHTPong) XXX_DiscardUnknown() {
-	xxx_messageInfo_DHTPong.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_DHTPong proto.InternalMessageInfo
+func (m *DHTPong) Reset()                    { *m = DHTPong{} }
+func (m *DHTPong) String() string            { return proto.CompactTextString(m) }
+func (*DHTPong) ProtoMessage()               {}
+func (*DHTPong) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{2} }
 
 func (m *DHTPong) GetVersion() uint32 {
 	if m != nil {
@@ -202,9 +130,9 @@ func init() {
 	proto.RegisterType((*DHTPong)(nil), "netpb.DHTPong")
 }
 
-func init() { proto.RegisterFile("dht_pingpong.proto", fileDescriptor_dht_pingpong_da5cf8d09e8d4ef0) }
+func init() { proto.RegisterFile("dht_pingpong.proto", fileDescriptor8) }
 
-var fileDescriptor_dht_pingpong_da5cf8d09e8d4ef0 = []byte{
+var fileDescriptor8 = []byte{
 	// 203 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0x12, 0x4a, 0xc9, 0x28, 0x89,
 	0x2f, 0xc8, 0xcc, 0x4b, 0x2f, 0xc8, 0xcf, 0x4b, 0xd7, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62,

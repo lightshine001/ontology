@@ -19,6 +19,20 @@ syntax = "proto3";
 
 package netpb;
 
+message Header {
+	uint32 Version = 1;
+	bytes PrevBlockHash = 2;
+	bytes TransactionsRoot =3;
+	bytes BlockRoot = 4;
+	uint32 Timestamp = 5;
+	uint32 Height = 6;
+	uint64 ConsensusData = 7;
+	bytes ConsensusPayload = 8;
+	bytes NextBookkeeper = 9;
+	repeated bytes Bookkeepers = 10;
+	repeated bytes SigData = 11;
+}
+
 message BlkHeader {
-    repeated bytes BlkHdr = 1;
+    repeated Header BlkHdr = 1;
 }

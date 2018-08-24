@@ -12,42 +12,14 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
-
 type VerAck struct {
-	IsConsensus          bool     `protobuf:"varint,1,opt,name=IsConsensus,proto3" json:"IsConsensus,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	IsConsensus bool `protobuf:"varint,1,opt,name=IsConsensus" json:"IsConsensus,omitempty"`
 }
 
-func (m *VerAck) Reset()         { *m = VerAck{} }
-func (m *VerAck) String() string { return proto.CompactTextString(m) }
-func (*VerAck) ProtoMessage()    {}
-func (*VerAck) Descriptor() ([]byte, []int) {
-	return fileDescriptor_verack_e58ba7336bb15fce, []int{0}
-}
-func (m *VerAck) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_VerAck.Unmarshal(m, b)
-}
-func (m *VerAck) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_VerAck.Marshal(b, m, deterministic)
-}
-func (dst *VerAck) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_VerAck.Merge(dst, src)
-}
-func (m *VerAck) XXX_Size() int {
-	return xxx_messageInfo_VerAck.Size(m)
-}
-func (m *VerAck) XXX_DiscardUnknown() {
-	xxx_messageInfo_VerAck.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_VerAck proto.InternalMessageInfo
+func (m *VerAck) Reset()                    { *m = VerAck{} }
+func (m *VerAck) String() string            { return proto.CompactTextString(m) }
+func (*VerAck) ProtoMessage()               {}
+func (*VerAck) Descriptor() ([]byte, []int) { return fileDescriptor17, []int{0} }
 
 func (m *VerAck) GetIsConsensus() bool {
 	if m != nil {
@@ -60,9 +32,9 @@ func init() {
 	proto.RegisterType((*VerAck)(nil), "netpb.VerAck")
 }
 
-func init() { proto.RegisterFile("verack.proto", fileDescriptor_verack_e58ba7336bb15fce) }
+func init() { proto.RegisterFile("verack.proto", fileDescriptor17) }
 
-var fileDescriptor_verack_e58ba7336bb15fce = []byte{
+var fileDescriptor17 = []byte{
 	// 84 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0x29, 0x4b, 0x2d, 0x4a,
 	0x4c, 0xce, 0xd6, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0xcd, 0x4b, 0x2d, 0x29, 0x48, 0x52,

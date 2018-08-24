@@ -21,7 +21,7 @@ package link
 import (
 	"bufio"
 	"bytes"
-	"errors"
+	"fmt"
 	"net"
 	"time"
 
@@ -38,10 +38,15 @@ type Link struct {
 	port     uint16    // The server port of the node
 	time     time.Time // The latest time the node activity
 	recvChan chan *types.MsgPayload
+	netMsgCh chan *types.NetMessage
+	stopCh   chan struct{}
 }
 
 func NewLink() *Link {
-	link := &Link{}
+	link := &Link{
+		netMsgCh: make(chan *types.NetMessage, common.CHAN_CAPABILITY),
+		stopCh:   make(chan struct{}),
+	}
 
 	return link
 }
@@ -106,7 +111,7 @@ func (this *Link) GetRXTime() time.Time {
 	return this.time
 }
 
-func (this *Link) Rx() {
+func (this *Link) rx() {
 	reader := bufio.NewReaderSize(this.conn, common.MAX_BUF_LEN)
 
 	for {
@@ -148,19 +153,22 @@ func (this *Link) CloseConn() {
 	if this.conn != nil {
 		this.conn.Close()
 		this.conn = nil
+		this.stopCh <- struct{}{}
 	}
 }
 
-func (this *Link) Tx(msg *types.NetMessage) error {
+func (this *Link) tx(msg *types.NetMessage) {
+	// Fixme
 	conn := this.conn
 	if conn == nil {
-		return errors.New("tx link invalid")
+		log.Error("tx link invalid")
+		return
 	}
 	buf := bytes.NewBuffer(nil)
 	err := types.WriteMessage(buf, msg)
 	if err != nil {
 		log.Error("error serialize messge ", err.Error())
-		return err
+		return
 	}
 
 	payload := buf.Bytes()
@@ -176,8 +184,33 @@ func (this *Link) Tx(msg *types.NetMessage) error {
 	if err != nil {
 		log.Error("error sending messge to peer node ", err.Error())
 		this.disconnectNotify()
-		return err
+		return
 	}
+}
 
+func (this *Link) SendMessage(msg *types.NetMessage) error {
+	select {
+	case this.netMsgCh <- msg:
+	default:
+		return fmt.Errorf("link's send channel overload")
+	}
 	return nil
+}
+
+func (this *Link) loop() {
+	for {
+		select {
+		case <-this.stopCh:
+			return
+		case msg, ok := <-this.netMsgCh:
+			if ok {
+				this.tx(msg)
+			}
+		}
+	}
+}
+
+func (this *Link) Run() {
+	go this.rx()
+	go this.loop()
 }

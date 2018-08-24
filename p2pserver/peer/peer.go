@@ -254,7 +254,7 @@ func (this *Peer) GetUDPPort() uint16 {
 //SendToSync call sync link to send buffer
 func (this *Peer) SendToSync(msg *types.NetMessage) error {
 	if this.SyncLink != nil && this.SyncLink.Valid() {
-		return this.SyncLink.Tx(msg)
+		return this.SyncLink.SendMessage(msg)
 	}
 	return errors.New("sync link invalid")
 }
@@ -262,7 +262,7 @@ func (this *Peer) SendToSync(msg *types.NetMessage) error {
 //SendToCons call consensus link to send buffer
 func (this *Peer) SendToCons(msg *types.NetMessage) error {
 	if this.ConsLink != nil && this.ConsLink.Valid() {
-		return this.ConsLink.Tx(msg)
+		return this.ConsLink.SendMessage(msg)
 	}
 	return errors.New("cons link invalid")
 }
@@ -270,23 +270,16 @@ func (this *Peer) SendToCons(msg *types.NetMessage) error {
 //CloseSync halt sync connection
 func (this *Peer) CloseSync() {
 	this.SetSyncState(common.INACTIVITY)
-	conn := this.SyncLink.GetConn()
 	this.connLock.Lock()
-	if conn != nil {
-		conn.Close()
-	}
+	this.SyncLink.CloseConn()
 	this.connLock.Unlock()
 }
 
 //CloseCons halt consensus connection
 func (this *Peer) CloseCons() {
 	this.SetConsState(common.INACTIVITY)
-	conn := this.ConsLink.GetConn()
 	this.connLock.Lock()
-	if conn != nil {
-		conn.Close()
-
-	}
+	this.ConsLink.CloseConn()
 	this.connLock.Unlock()
 }
 

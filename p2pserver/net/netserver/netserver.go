@@ -398,7 +398,7 @@ func (this *NetServer) Connect(addr string, isConsensus bool) error {
 		remotePeer.SyncLink.SetAddr(addr)
 		remotePeer.SyncLink.SetConn(conn)
 		remotePeer.AttachSyncChan(this.SyncChan)
-		go remotePeer.SyncLink.Rx()
+		remotePeer.SyncLink.Run()
 		remotePeer.SetSyncState(common.HAND)
 
 	} else {
@@ -407,7 +407,7 @@ func (this *NetServer) Connect(addr string, isConsensus bool) error {
 		remotePeer.ConsLink.SetAddr(addr)
 		remotePeer.ConsLink.SetConn(conn)
 		remotePeer.AttachConsChan(this.ConsChan)
-		go remotePeer.ConsLink.Rx()
+		remotePeer.ConsLink.Run()
 		remotePeer.SetConsState(common.HAND)
 	}
 	version := msgpack.ConstructVersion(this, isConsensus, ledger.DefLedger.GetCurrentBlockHeight())
@@ -552,7 +552,7 @@ func (this *NetServer) startSyncAccept(listener net.Listener) {
 		remotePeer.SyncLink.SetAddr(addr)
 		remotePeer.SyncLink.SetConn(conn)
 		remotePeer.AttachSyncChan(this.SyncChan)
-		go remotePeer.SyncLink.Rx()
+		remotePeer.SyncLink.Run()
 	}
 }
 
@@ -590,7 +590,7 @@ func (this *NetServer) startConsAccept(listener net.Listener) {
 		remotePeer.ConsLink.SetAddr(addr)
 		remotePeer.ConsLink.SetConn(conn)
 		remotePeer.AttachConsChan(this.ConsChan)
-		go remotePeer.ConsLink.Rx()
+		remotePeer.ConsLink.Run()
 	}
 }
 

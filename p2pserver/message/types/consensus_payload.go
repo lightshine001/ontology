@@ -24,12 +24,14 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/ontio/ontology-crypto/keypair"
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/log"
 	"github.com/ontio/ontology/common/serialization"
 	"github.com/ontio/ontology/core/signature"
 	"github.com/ontio/ontology/errors"
+	"github.com/ontio/ontology/p2pserver/message/pb"
 )
 
 type Datatype uint8
@@ -254,5 +256,48 @@ func (this *ConsensusPayload) DeserializeUnsigned(r io.Reader) error {
 
 		return errors.NewDetailErr(err, errors.ErrNetUnPackFail, "read Data error")
 	}
+	return nil
+}
+
+func (this *ConsensusPayload) ToProto(hash common.Uint256) *netpb.ConsensusPayload {
+	return &netpb.ConsensusPayload{
+		Version:         this.Version,
+		PrevHash:        this.PrevHash.ToArray(),
+		Height:          this.Height,
+		BookkeeperIndex: uint32(this.BookkeeperIndex),
+		Timestamp:       this.Timestamp,
+		DestID:          this.DestID,
+		Data:            this.Data,
+		Owner:           keypair.SerializePublicKey(this.Owner),
+		Signature:       this.Signature,
+		Hash:            hash.ToArray(),
+	}
+}
+
+func (this *ConsensusPayload) FromProto(msg proto.Message) error {
+	pbCosenssuPayload, ok := msg.(*netpb.ConsensusPayload)
+	if !ok {
+		return fmt.Errorf("failed to assert the type ConsensusPayload")
+	}
+	if pbCosenssuPayload == nil {
+		return fmt.Errorf("input msg is nil")
+	}
+	var err error
+	this.Version = pbCosenssuPayload.Version
+	this.PrevHash, err = common.Uint256ParseFromBytes(pbCosenssuPayload.PrevHash)
+	if err != nil {
+		return fmt.Errorf("failed to parse uint256 from bytes, err %v", err)
+	}
+	this.Height = uint32(pbCosenssuPayload.Height)
+	this.BookkeeperIndex = uint16(pbCosenssuPayload.BookkeeperIndex)
+	this.Timestamp = pbCosenssuPayload.Timestamp
+	this.DestID = pbCosenssuPayload.DestID
+	this.Data = pbCosenssuPayload.Data
+
+	this.Owner, err = keypair.DeserializePublicKey(pbCosenssuPayload.Owner)
+	if err != nil {
+		return fmt.Errorf("failed to deserialize public key, err %v", err)
+	}
+	this.Signature = pbCosenssuPayload.Signature
 	return nil
 }

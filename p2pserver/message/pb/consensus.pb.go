@@ -12,51 +12,23 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
-
 type ConsensusPayload struct {
-	Version              uint32   `protobuf:"varint,1,opt,name=Version,proto3" json:"Version,omitempty"`
-	PrevHash             []byte   `protobuf:"bytes,2,opt,name=PrevHash,proto3" json:"PrevHash,omitempty"`
-	Height               uint32   `protobuf:"varint,3,opt,name=Height,proto3" json:"Height,omitempty"`
-	BookkeeperIndex      uint32   `protobuf:"varint,4,opt,name=BookkeeperIndex,proto3" json:"BookkeeperIndex,omitempty"`
-	Timestamp            uint32   `protobuf:"varint,5,opt,name=Timestamp,proto3" json:"Timestamp,omitempty"`
-	DestID               uint64   `protobuf:"varint,6,opt,name=DestID,proto3" json:"DestID,omitempty"`
-	Data                 []byte   `protobuf:"bytes,7,opt,name=Data,proto3" json:"Data,omitempty"`
-	Owner                []byte   `protobuf:"bytes,8,opt,name=Owner,proto3" json:"Owner,omitempty"`
-	Signature            []byte   `protobuf:"bytes,9,opt,name=Signature,proto3" json:"Signature,omitempty"`
-	Hash                 []byte   `protobuf:"bytes,10,opt,name=hash,proto3" json:"hash,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	Version         uint32 `protobuf:"varint,1,opt,name=Version" json:"Version,omitempty"`
+	PrevHash        []byte `protobuf:"bytes,2,opt,name=PrevHash,proto3" json:"PrevHash,omitempty"`
+	Height          uint32 `protobuf:"varint,3,opt,name=Height" json:"Height,omitempty"`
+	BookkeeperIndex uint32 `protobuf:"varint,4,opt,name=BookkeeperIndex" json:"BookkeeperIndex,omitempty"`
+	Timestamp       uint32 `protobuf:"varint,5,opt,name=Timestamp" json:"Timestamp,omitempty"`
+	DestID          uint64 `protobuf:"varint,6,opt,name=DestID" json:"DestID,omitempty"`
+	Data            []byte `protobuf:"bytes,7,opt,name=Data,proto3" json:"Data,omitempty"`
+	Owner           []byte `protobuf:"bytes,8,opt,name=Owner,proto3" json:"Owner,omitempty"`
+	Signature       []byte `protobuf:"bytes,9,opt,name=Signature,proto3" json:"Signature,omitempty"`
+	Hash            []byte `protobuf:"bytes,10,opt,name=hash,proto3" json:"hash,omitempty"`
 }
 
-func (m *ConsensusPayload) Reset()         { *m = ConsensusPayload{} }
-func (m *ConsensusPayload) String() string { return proto.CompactTextString(m) }
-func (*ConsensusPayload) ProtoMessage()    {}
-func (*ConsensusPayload) Descriptor() ([]byte, []int) {
-	return fileDescriptor_consensus_1fd1823a7ba1e685, []int{0}
-}
-func (m *ConsensusPayload) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_ConsensusPayload.Unmarshal(m, b)
-}
-func (m *ConsensusPayload) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_ConsensusPayload.Marshal(b, m, deterministic)
-}
-func (dst *ConsensusPayload) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ConsensusPayload.Merge(dst, src)
-}
-func (m *ConsensusPayload) XXX_Size() int {
-	return xxx_messageInfo_ConsensusPayload.Size(m)
-}
-func (m *ConsensusPayload) XXX_DiscardUnknown() {
-	xxx_messageInfo_ConsensusPayload.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_ConsensusPayload proto.InternalMessageInfo
+func (m *ConsensusPayload) Reset()                    { *m = ConsensusPayload{} }
+func (m *ConsensusPayload) String() string            { return proto.CompactTextString(m) }
+func (*ConsensusPayload) ProtoMessage()               {}
+func (*ConsensusPayload) Descriptor() ([]byte, []int) { return fileDescriptor6, []int{0} }
 
 func (m *ConsensusPayload) GetVersion() uint32 {
 	if m != nil {
@@ -129,36 +101,14 @@ func (m *ConsensusPayload) GetHash() []byte {
 }
 
 type Consensus struct {
-	Cons                 *ConsensusPayload `protobuf:"bytes,1,opt,name=Cons,proto3" json:"Cons,omitempty"`
-	Hop                  uint32            `protobuf:"varint,2,opt,name=Hop,proto3" json:"Hop,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}          `json:"-"`
-	XXX_unrecognized     []byte            `json:"-"`
-	XXX_sizecache        int32             `json:"-"`
+	Cons *ConsensusPayload `protobuf:"bytes,1,opt,name=Cons" json:"Cons,omitempty"`
+	Hop  uint32            `protobuf:"varint,2,opt,name=Hop" json:"Hop,omitempty"`
 }
 
-func (m *Consensus) Reset()         { *m = Consensus{} }
-func (m *Consensus) String() string { return proto.CompactTextString(m) }
-func (*Consensus) ProtoMessage()    {}
-func (*Consensus) Descriptor() ([]byte, []int) {
-	return fileDescriptor_consensus_1fd1823a7ba1e685, []int{1}
-}
-func (m *Consensus) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_Consensus.Unmarshal(m, b)
-}
-func (m *Consensus) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_Consensus.Marshal(b, m, deterministic)
-}
-func (dst *Consensus) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Consensus.Merge(dst, src)
-}
-func (m *Consensus) XXX_Size() int {
-	return xxx_messageInfo_Consensus.Size(m)
-}
-func (m *Consensus) XXX_DiscardUnknown() {
-	xxx_messageInfo_Consensus.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_Consensus proto.InternalMessageInfo
+func (m *Consensus) Reset()                    { *m = Consensus{} }
+func (m *Consensus) String() string            { return proto.CompactTextString(m) }
+func (*Consensus) ProtoMessage()               {}
+func (*Consensus) Descriptor() ([]byte, []int) { return fileDescriptor6, []int{1} }
 
 func (m *Consensus) GetCons() *ConsensusPayload {
 	if m != nil {
@@ -179,9 +129,9 @@ func init() {
 	proto.RegisterType((*Consensus)(nil), "netpb.Consensus")
 }
 
-func init() { proto.RegisterFile("consensus.proto", fileDescriptor_consensus_1fd1823a7ba1e685) }
+func init() { proto.RegisterFile("consensus.proto", fileDescriptor6) }
 
-var fileDescriptor_consensus_1fd1823a7ba1e685 = []byte{
+var fileDescriptor6 = []byte{
 	// 270 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x5c, 0x90, 0xcb, 0x6a, 0xeb, 0x30,
 	0x10, 0x86, 0x71, 0x62, 0x3b, 0xf1, 0x9c, 0x13, 0x12, 0x86, 0xd2, 0x8a, 0xd2, 0x85, 0xc9, 0xca,

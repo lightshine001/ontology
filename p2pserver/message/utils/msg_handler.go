@@ -24,7 +24,6 @@ import (
 	"strings"
 	"time"
 
-	"bytes"
 	evtActor "github.com/ontio/ontology-eventbus/actor"
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/config"
@@ -41,13 +40,13 @@ import (
 
 // HeaderReqHandle handles the header sync req from peer
 func HeadersReqHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args ...interface{}) {
-	log.Debug("receive headers request message", data.Addr, data.Id)
+	log.Info("receive headers request message", data.Addr, data.Id)
 
 	headersReq := data.Payload.Content().(*netpb.HeadersReq)
 
 	startHash, err := common.Uint256ParseFromBytes(headersReq.HashStart)
 	if err != nil {
-		log.Info(err)
+		log.Info(headersReq.HashStart, err)
 		return
 	}
 	stopHash, err := common.Uint256ParseFromBytes(headersReq.HashEnd)
@@ -63,6 +62,11 @@ func HeadersReqHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID,
 		return
 	}
 	msg := msgpack.ConstructHeadersMsg(headers)
+	if msg == nil {
+		log.Error("failed to construct headers msg")
+		return
+	}
+
 	err = p2p.Send(remotePeer, msg, false)
 	if err != nil {
 		log.Error(err)
@@ -112,10 +116,9 @@ func BlkHeaderHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, 
 	if pid != nil {
 		var blkHeader = data.Payload.Content().(*netpb.BlkHeader)
 		headers := make([]*types.Header, 0, len(blkHeader.BlkHdr))
-		for _, data := range blkHeader.BlkHdr {
-			buf := bytes.NewBuffer(data)
+		for _, pbHeader := range blkHeader.BlkHdr {
 			header := &types.Header{}
-			err := header.Deserialize(buf)
+			err := header.FromProto(pbHeader)
 			if err != nil {
 				log.Info(err)
 				return
@@ -140,10 +143,9 @@ func BlockHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args
 	}
 
 	if pid != nil {
-		var block = data.Payload.Content().(*netpb.Block)
-		buf := bytes.NewBuffer(block.BlockData)
+		pbBlock := data.Payload.Content().(*netpb.Block)
 		blk := &types.Block{}
-		err := blk.Deserialize(buf)
+		err := blk.FromProto(pbBlock)
 		if err != nil {
 			log.Info(err)
 			return
@@ -166,32 +168,39 @@ func ConsensusHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, 
 		return
 	}
 
-	/*if actor.ConsensusPid != nil {
-	var consensus = data.Payload.(*msgTypes.Consensus)
-	if err := consensus.Cons.Verify(); err != nil {
-		log.Error(err)
-		return
-	}
-	if consensus.Cons.DestID == 0 || consensus.Cons.DestID == p2p.GetID() {
-		actor.ConsensusPid.Tell(&consensus.Cons)
-	}
-
-	remotePeer.MarkHashAsSeen(consensus.Cons.Hash())
-	consensus.Hop--*/
-
-	// Relay msg to other remote peers
-	/*if consensus.Hop > 0 {
-		if consensus.Cons.DestID == 0 {
-			p2p.Xmit(consensus, consensus.Cons.Hash(), true)
-		} else if consensus.Cons.DestID != p2p.GetID() {
-			msg := &msgCommon.TransmitConsensusMsgReq{
-				Target: consensus.Cons.DestID,
-				Msg:    consensus,
-			}
-			pid.Tell(msg)
+	if actor.ConsensusPid != nil {
+		var consensus = data.Payload.Content().(*netpb.Consensus)
+		consensusPayload := &msgTypes.ConsensusPayload{}
+		err := consensusPayload.FromProto(consensus.Cons)
+		if err != nil {
+			log.Errorf("failed to convert consensus payload from protobuf, err %v",
+				err)
+			return
 		}
-	}*/
-	//}*/
+		if err := consensusPayload.Verify(); err != nil {
+			log.Error(err)
+			return
+		}
+		if consensus.Cons.DestID == 0 || consensus.Cons.DestID == p2p.GetID() {
+			actor.ConsensusPid.Tell(consensusPayload)
+		}
+
+		remotePeer.MarkHashAsSeen(consensusPayload.Hash())
+		consensus.Hop--
+
+		// Relay msg to other remote peers
+		if consensus.Hop > 0 {
+			if consensus.Cons.DestID == 0 {
+				p2p.Xmit(data.Payload, consensusPayload.Hash(), true)
+			} else if consensus.Cons.DestID != p2p.GetID() {
+				msg := &msgCommon.TransmitConsensusMsgReq{
+					Target: consensus.Cons.DestID,
+					Msg:    consensus,
+				}
+				pid.Tell(msg)
+			}
+		}
+	}
 }
 
 // NotFoundHandle handles the not found message from peer
@@ -205,9 +214,8 @@ func TransactionHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID
 	log.Debug("receive transaction message", data.Addr, data.Id)
 
 	var trn = data.Payload.Content().(*netpb.Trn)
-	buf := bytes.NewBuffer(trn.Transaction)
 	tx := &types.Transaction{}
-	err := tx.Deserialize(buf)
+	err := tx.FromProto(trn.Transaction)
 	if err != nil {
 		log.Info(err)
 		return
@@ -424,7 +432,13 @@ func VerAckHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, arg
 	remotePeer := p2p.GetPeer(data.Id)
 
 	if remotePeer == nil {
-		log.Warn("nbr node is not exist", data.Id, data.Addr)
+		log.Warn("[p2p]nbr node is not exist", data.Id, data.Addr)
+		return
+	}
+
+	if remotePeer.GetAddr() != data.Addr {
+		log.Warnf("[p2p]address doesn't match, input %s, expected %s",
+			data.Addr, remotePeer.GetAddr())
 		return
 	}
 
@@ -493,6 +507,7 @@ func DataReqHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, ar
 	}
 	reqType := common.InventoryType(dataReq.DataType)
 	hash, _ := common.Uint256ParseFromBytes(dataReq.Hash)
+	log.Infof("data req handle: req type %d", reqType)
 	switch reqType {
 	case common.BLOCK:
 		block, err := ledger.DefLedger.GetBlockByHash(hash)

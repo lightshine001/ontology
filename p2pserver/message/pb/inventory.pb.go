@@ -12,43 +12,15 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
-
 type InvPayload struct {
-	InvType              InventoryType `protobuf:"varint,1,opt,name=InvType,proto3,enum=netpb.InventoryType" json:"InvType,omitempty"`
-	Blk                  [][]byte      `protobuf:"bytes,2,rep,name=Blk,proto3" json:"Blk,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}      `json:"-"`
-	XXX_unrecognized     []byte        `json:"-"`
-	XXX_sizecache        int32         `json:"-"`
+	InvType InventoryType `protobuf:"varint,1,opt,name=InvType,enum=netpb.InventoryType" json:"InvType,omitempty"`
+	Blk     [][]byte      `protobuf:"bytes,2,rep,name=Blk,proto3" json:"Blk,omitempty"`
 }
 
-func (m *InvPayload) Reset()         { *m = InvPayload{} }
-func (m *InvPayload) String() string { return proto.CompactTextString(m) }
-func (*InvPayload) ProtoMessage()    {}
-func (*InvPayload) Descriptor() ([]byte, []int) {
-	return fileDescriptor_inventory_f3b72a13b0e86c75, []int{0}
-}
-func (m *InvPayload) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_InvPayload.Unmarshal(m, b)
-}
-func (m *InvPayload) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_InvPayload.Marshal(b, m, deterministic)
-}
-func (dst *InvPayload) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_InvPayload.Merge(dst, src)
-}
-func (m *InvPayload) XXX_Size() int {
-	return xxx_messageInfo_InvPayload.Size(m)
-}
-func (m *InvPayload) XXX_DiscardUnknown() {
-	xxx_messageInfo_InvPayload.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_InvPayload proto.InternalMessageInfo
+func (m *InvPayload) Reset()                    { *m = InvPayload{} }
+func (m *InvPayload) String() string            { return proto.CompactTextString(m) }
+func (*InvPayload) ProtoMessage()               {}
+func (*InvPayload) Descriptor() ([]byte, []int) { return fileDescriptor11, []int{0} }
 
 func (m *InvPayload) GetInvType() InventoryType {
 	if m != nil {
@@ -65,36 +37,14 @@ func (m *InvPayload) GetBlk() [][]byte {
 }
 
 type Inv struct {
-	P                    *InvPayload `protobuf:"bytes,1,opt,name=P,proto3" json:"P,omitempty"`
-	Hop                  uint32      `protobuf:"varint,2,opt,name=Hop,proto3" json:"Hop,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}    `json:"-"`
-	XXX_unrecognized     []byte      `json:"-"`
-	XXX_sizecache        int32       `json:"-"`
+	P   *InvPayload `protobuf:"bytes,1,opt,name=P" json:"P,omitempty"`
+	Hop uint32      `protobuf:"varint,2,opt,name=Hop" json:"Hop,omitempty"`
 }
 
-func (m *Inv) Reset()         { *m = Inv{} }
-func (m *Inv) String() string { return proto.CompactTextString(m) }
-func (*Inv) ProtoMessage()    {}
-func (*Inv) Descriptor() ([]byte, []int) {
-	return fileDescriptor_inventory_f3b72a13b0e86c75, []int{1}
-}
-func (m *Inv) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_Inv.Unmarshal(m, b)
-}
-func (m *Inv) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_Inv.Marshal(b, m, deterministic)
-}
-func (dst *Inv) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Inv.Merge(dst, src)
-}
-func (m *Inv) XXX_Size() int {
-	return xxx_messageInfo_Inv.Size(m)
-}
-func (m *Inv) XXX_DiscardUnknown() {
-	xxx_messageInfo_Inv.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_Inv proto.InternalMessageInfo
+func (m *Inv) Reset()                    { *m = Inv{} }
+func (m *Inv) String() string            { return proto.CompactTextString(m) }
+func (*Inv) ProtoMessage()               {}
+func (*Inv) Descriptor() ([]byte, []int) { return fileDescriptor11, []int{1} }
 
 func (m *Inv) GetP() *InvPayload {
 	if m != nil {
@@ -115,9 +65,9 @@ func init() {
 	proto.RegisterType((*Inv)(nil), "netpb.Inv")
 }
 
-func init() { proto.RegisterFile("inventory.proto", fileDescriptor_inventory_f3b72a13b0e86c75) }
+func init() { proto.RegisterFile("inventory.proto", fileDescriptor11) }
 
-var fileDescriptor_inventory_f3b72a13b0e86c75 = []byte{
+var fileDescriptor11 = []byte{
 	// 164 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0xcf, 0xcc, 0x2b, 0x4b,
 	0xcd, 0x2b, 0xc9, 0x2f, 0xaa, 0xd4, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0xcd, 0x4b, 0x2d,

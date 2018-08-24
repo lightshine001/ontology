@@ -12,43 +12,15 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
-
 type FindNode struct {
-	FromID               []byte   `protobuf:"bytes,1,opt,name=FromID,proto3" json:"FromID,omitempty"`
-	TargetID             []byte   `protobuf:"bytes,2,opt,name=TargetID,proto3" json:"TargetID,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	FromID   []byte `protobuf:"bytes,1,opt,name=FromID,proto3" json:"FromID,omitempty"`
+	TargetID []byte `protobuf:"bytes,2,opt,name=TargetID,proto3" json:"TargetID,omitempty"`
 }
 
-func (m *FindNode) Reset()         { *m = FindNode{} }
-func (m *FindNode) String() string { return proto.CompactTextString(m) }
-func (*FindNode) ProtoMessage()    {}
-func (*FindNode) Descriptor() ([]byte, []int) {
-	return fileDescriptor_findnode_806753bb83e53f60, []int{0}
-}
-func (m *FindNode) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_FindNode.Unmarshal(m, b)
-}
-func (m *FindNode) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_FindNode.Marshal(b, m, deterministic)
-}
-func (dst *FindNode) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_FindNode.Merge(dst, src)
-}
-func (m *FindNode) XXX_Size() int {
-	return xxx_messageInfo_FindNode.Size(m)
-}
-func (m *FindNode) XXX_DiscardUnknown() {
-	xxx_messageInfo_FindNode.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_FindNode proto.InternalMessageInfo
+func (m *FindNode) Reset()                    { *m = FindNode{} }
+func (m *FindNode) String() string            { return proto.CompactTextString(m) }
+func (*FindNode) ProtoMessage()               {}
+func (*FindNode) Descriptor() ([]byte, []int) { return fileDescriptor10, []int{0} }
 
 func (m *FindNode) GetFromID() []byte {
 	if m != nil {
@@ -68,9 +40,9 @@ func init() {
 	proto.RegisterType((*FindNode)(nil), "netpb.FindNode")
 }
 
-func init() { proto.RegisterFile("findnode.proto", fileDescriptor_findnode_806753bb83e53f60) }
+func init() { proto.RegisterFile("findnode.proto", fileDescriptor10) }
 
-var fileDescriptor_findnode_806753bb83e53f60 = []byte{
+var fileDescriptor10 = []byte{
 	// 101 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0x4b, 0xcb, 0xcc, 0x4b,
 	0xc9, 0xcb, 0x4f, 0x49, 0xd5, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0xcd, 0x4b, 0x2d, 0x29,

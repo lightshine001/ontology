@@ -185,7 +185,6 @@ func (this *P2PServer) GetDHT() *dht.DHT {
 func (this *P2PServer) Xmit(message interface{}) error {
 	log.Debug()
 	var netMsg *msgtypes.NetMessage
-
 	var msgHash comm.Uint256
 	isConsensus := false
 	switch message.(type) {
@@ -199,13 +198,13 @@ func (this *P2PServer) Xmit(message interface{}) error {
 		block := message.(*types.Block)
 		netMsg = msgpack.ConstructBlockMsg(block)
 		msgHash = block.Hash()
-	/*case *msgtypes.ConsensusPayload:
-	var msg msgtypes.Message
-	log.Debug("TX consensus message")
-	consensusPayload := message.(*msgtypes.ConsensusPayload)
-	msg = msgpack.NewConsensus(consensusPayload)
-	isConsensus = true
-	msgHash = consensusPayload.Hash()*/
+	case *msgtypes.ConsensusPayload:
+		log.Debug("TX consensus message")
+		consensusPayload := message.(*msgtypes.ConsensusPayload)
+		msgHash = consensusPayload.Hash()
+		pbConsensusPayload := consensusPayload.ToProto(msgHash)
+		netMsg = msgpack.ConsrtuctConsensusMsg(pbConsensusPayload)
+		isConsensus = true
 	case comm.Uint256:
 		log.Debug("TX block hash message")
 		hash := message.(comm.Uint256)

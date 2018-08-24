@@ -25,6 +25,7 @@ import (
 
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/serialization"
+	"github.com/ontio/ontology/p2pserver/message/pb"
 )
 
 type Block struct {
@@ -161,6 +162,47 @@ func (b *Block) RebuildMerkleRoot() {
 	b.Header.TransactionsRoot = hash
 }
 
-func (bd *Block) SerializeUnsigned(w io.Writer) error {
-	return bd.Header.SerializeUnsigned(w)
+func (b *Block) SerializeUnsigned(w io.Writer) error {
+	return b.Header.SerializeUnsigned(w)
+}
+
+func (b *Block) ToProto() *netpb.Block {
+	pbBlock := &netpb.Block{}
+	pbBlock.Header = b.Header.ToProto()
+	for _, tx := range b.Transactions {
+		pbTx := tx.ToProto()
+		if pbTx == nil {
+			return nil
+		}
+		pbBlock.Transactions = append(pbBlock.Transactions, pbTx)
+	}
+
+	return pbBlock
+}
+
+func (b *Block) FromProto(pbBlock *netpb.Block) error {
+	if b.Header == nil {
+		b.Header = new(Header)
+	}
+	if pbBlock.Header == nil {
+		return fmt.Errorf("protobuf block header is nil")
+	}
+	err := b.Header.FromProto(pbBlock.Header)
+	if err != nil {
+		return err
+	}
+
+	hashes := make([]common.Uint256, 0, len(pbBlock.Transactions))
+	for _, pbTx := range pbBlock.Transactions {
+		tx := new(Transaction)
+		err := tx.FromProto(pbTx)
+		if err != nil {
+			return err
+		}
+		txHash := tx.Hash()
+		b.Transactions = append(b.Transactions, tx)
+		hashes = append(hashes, txHash)
+	}
+	b.Header.TransactionsRoot = common.ComputeMerkleRoot(hashes)
+	return nil
 }

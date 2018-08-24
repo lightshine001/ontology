@@ -12,42 +12,14 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
-
 type NotFound struct {
-	Hash                 []byte   `protobuf:"bytes,1,opt,name=Hash,proto3" json:"Hash,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	Hash []byte `protobuf:"bytes,1,opt,name=Hash,proto3" json:"Hash,omitempty"`
 }
 
-func (m *NotFound) Reset()         { *m = NotFound{} }
-func (m *NotFound) String() string { return proto.CompactTextString(m) }
-func (*NotFound) ProtoMessage()    {}
-func (*NotFound) Descriptor() ([]byte, []int) {
-	return fileDescriptor_notfound_e6eec121307adfda, []int{0}
-}
-func (m *NotFound) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_NotFound.Unmarshal(m, b)
-}
-func (m *NotFound) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_NotFound.Marshal(b, m, deterministic)
-}
-func (dst *NotFound) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_NotFound.Merge(dst, src)
-}
-func (m *NotFound) XXX_Size() int {
-	return xxx_messageInfo_NotFound.Size(m)
-}
-func (m *NotFound) XXX_DiscardUnknown() {
-	xxx_messageInfo_NotFound.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_NotFound proto.InternalMessageInfo
+func (m *NotFound) Reset()                    { *m = NotFound{} }
+func (m *NotFound) String() string            { return proto.CompactTextString(m) }
+func (*NotFound) ProtoMessage()               {}
+func (*NotFound) Descriptor() ([]byte, []int) { return fileDescriptor13, []int{0} }
 
 func (m *NotFound) GetHash() []byte {
 	if m != nil {
@@ -60,9 +32,9 @@ func init() {
 	proto.RegisterType((*NotFound)(nil), "netpb.NotFound")
 }
 
-func init() { proto.RegisterFile("notfound.proto", fileDescriptor_notfound_e6eec121307adfda) }
+func init() { proto.RegisterFile("notfound.proto", fileDescriptor13) }
 
-var fileDescriptor_notfound_e6eec121307adfda = []byte{
+var fileDescriptor13 = []byte{
 	// 79 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0xcb, 0xcb, 0x2f, 0x49,
 	0xcb, 0x2f, 0xcd, 0x4b, 0xd1, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0xcd, 0x4b, 0x2d, 0x29,

@@ -12,44 +12,16 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-// A compilation error at this line likely means your copy of the
-// proto package needs to be updated.
-const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
-
 type HeadersReq struct {
-	Len                  uint32   `protobuf:"varint,1,opt,name=Len,proto3" json:"Len,omitempty"`
-	HashStart            []byte   `protobuf:"bytes,2,opt,name=HashStart,proto3" json:"HashStart,omitempty"`
-	HashEnd              []byte   `protobuf:"bytes,3,opt,name=HashEnd,proto3" json:"HashEnd,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	Len       uint32 `protobuf:"varint,1,opt,name=Len" json:"Len,omitempty"`
+	HashStart []byte `protobuf:"bytes,2,opt,name=HashStart,proto3" json:"HashStart,omitempty"`
+	HashEnd   []byte `protobuf:"bytes,3,opt,name=HashEnd,proto3" json:"HashEnd,omitempty"`
 }
 
-func (m *HeadersReq) Reset()         { *m = HeadersReq{} }
-func (m *HeadersReq) String() string { return proto.CompactTextString(m) }
-func (*HeadersReq) ProtoMessage()    {}
-func (*HeadersReq) Descriptor() ([]byte, []int) {
-	return fileDescriptor_block_headers_req_9c8727c539bef58c, []int{0}
-}
-func (m *HeadersReq) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_HeadersReq.Unmarshal(m, b)
-}
-func (m *HeadersReq) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_HeadersReq.Marshal(b, m, deterministic)
-}
-func (dst *HeadersReq) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_HeadersReq.Merge(dst, src)
-}
-func (m *HeadersReq) XXX_Size() int {
-	return xxx_messageInfo_HeadersReq.Size(m)
-}
-func (m *HeadersReq) XXX_DiscardUnknown() {
-	xxx_messageInfo_HeadersReq.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_HeadersReq proto.InternalMessageInfo
+func (m *HeadersReq) Reset()                    { *m = HeadersReq{} }
+func (m *HeadersReq) String() string            { return proto.CompactTextString(m) }
+func (*HeadersReq) ProtoMessage()               {}
+func (*HeadersReq) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{0} }
 
 func (m *HeadersReq) GetLen() uint32 {
 	if m != nil {
@@ -76,11 +48,9 @@ func init() {
 	proto.RegisterType((*HeadersReq)(nil), "netpb.HeadersReq")
 }
 
-func init() {
-	proto.RegisterFile("block_headers_req.proto", fileDescriptor_block_headers_req_9c8727c539bef58c)
-}
+func init() { proto.RegisterFile("block_headers_req.proto", fileDescriptor3) }
 
-var fileDescriptor_block_headers_req_9c8727c539bef58c = []byte{
+var fileDescriptor3 = []byte{
 	// 123 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0x12, 0x4f, 0xca, 0xc9, 0x4f,
 	0xce, 0x8e, 0xcf, 0x48, 0x4d, 0x4c, 0x49, 0x2d, 0x2a, 0x8e, 0x2f, 0x4a, 0x2d, 0xd4, 0x2b, 0x28,

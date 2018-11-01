@@ -130,6 +130,7 @@ func (this *PeerCom) GetHeight() uint64 {
 //Peer represent the node in p2p
 type Peer struct {
 	base                    PeerCom
+	mu                      sync.Mutex
 	cap                     [32]byte
 	stream                  libnet.Stream
 	state                   uint32
@@ -140,8 +141,9 @@ type Peer struct {
 	normalPriorityMessageCh chan types.Message
 	lowPriorityMessageCh    chan types.Message
 	msgCount                map[string]uint64
-	mu                      sync.Mutex
+	reqRecord               map[string]int64
 	knownHash               set.Interface
+	quitWriteCh             chan struct{}
 }
 
 func NewPeer(stream libnet.Stream, recvCh chan *types.MsgPayload) *Peer {
@@ -154,6 +156,8 @@ func NewPeer(stream libnet.Stream, recvCh chan *types.MsgPayload) *Peer {
 		normalPriorityMessageCh: make(chan types.Message, 10000),
 		lowPriorityMessageCh:    make(chan types.Message, 100000),
 		msgCount:                make(map[string]uint64),
+		reqRecord:               make(map[string]int64),
+		quitWriteCh:             make(chan struct{}),
 	}
 	p.base.id = stream.Conn().RemotePeer()
 	p.base.addr = stream.Conn().RemoteMultiaddr()
@@ -216,7 +220,23 @@ func (this *Peer) SetPort(port uint16) {
 }
 
 //CloseSync halt sync connection
-func (this *Peer) Close() {
+func (this *Peer) close(reason error) {
+	// Add lock & close flag to prevent multi call.
+	this.mu.Lock()
+	defer this.mu.Unlock()
+
+	if this.state == common.INACTIVITY {
+		return
+	}
+	this.state = common.INACTIVITY
+	log.Infof("Closing stream %s due to err %v", this.String(), reason)
+	// quit.
+	this.quitWriteCh <- struct{}{}
+
+	// close stream.
+	if this.stream != nil {
+		this.stream.Close()
+	}
 }
 
 //GetID return peer`s id
@@ -332,6 +352,40 @@ func (this *Peer) IsConnected() bool {
 	return this.stream != nil
 }
 
+func (this *Peer) needSendMsg(msg types.Message) bool {
+	if msg.CmdType() != common.GET_DATA_TYPE {
+		return true
+	}
+
+	var dataReq = msg.(*types.DataReq)
+	reqID := fmt.Sprintf("%x%s", dataReq.DataType, dataReq.Hash.ToHexString())
+	now := time.Now().Unix()
+	if t, ok := this.reqRecord[reqID]; ok {
+		if int(now-t) < common.REQ_INTERVAL {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *Peer) addReqRecord(msg types.Message) {
+	if msg.CmdType() != common.GET_DATA_TYPE {
+		return
+	}
+	now := time.Now().Unix()
+	if len(this.reqRecord) >= common.MAX_REQ_RECORD_SIZE-1 {
+		for id := range this.reqRecord {
+			t := this.reqRecord[id]
+			if int(now-t) > common.REQ_INTERVAL {
+				delete(this.reqRecord, id)
+			}
+		}
+	}
+	var dataReq = msg.(*types.DataReq)
+	reqID := fmt.Sprintf("%x%s", dataReq.DataType, dataReq.Hash.ToHexString())
+	this.reqRecord[reqID] = now
+}
+
 func (this *Peer) readLoop() {
 	if !this.IsConnected() {
 		log.Errorf("peer %s is not connected", this.GetID().Pretty())
@@ -350,6 +404,13 @@ func (this *Peer) readLoop() {
 		t := time.Now().Unix()
 		this.SetLatestReadAt(t)
 
+		if !this.needSendMsg(msg) {
+			log.Infof("skip handle msgType:%s from:%s", msg.CmdType(), this.GetID().Pretty())
+			continue
+		}
+		this.addReqRecord(msg)
+		this.msgCount[msg.CmdType()]++
+
 		this.recvCh <- &types.MsgPayload{
 			Id:          this.GetID(),
 			Addr:        this.base.GetAddr(),
@@ -364,6 +425,12 @@ func (this *Peer) readLoop() {
 
 func (this *Peer) writeLoop() {
 	for {
+		select {
+		case <-this.quitWriteCh:
+			log.Infof("Quit stream write loop")
+			return
+		}
+
 		select {
 		case message, ok := <-this.highPriorityMessageCh:
 			if ok {

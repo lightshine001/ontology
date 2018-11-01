@@ -111,12 +111,10 @@ const (
 
 //PeerAddr represent peer`s net information
 type PeerAddr struct {
-	Time          int64    //latest timestamp
-	Services      uint64   //service type
-	IpAddr        [16]byte //ip address
-	Port          uint16   //sync port
-	ConsensusPort uint16   //consensus port
-	ID            uint64   //Unique ID
+	Time      int64  //latest timestamp
+	Services  uint64 //service type
+	Multiaddr string //ip address
+	ID        string //Unique ID
 }
 
 //const channel msg id and type

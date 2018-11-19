@@ -59,6 +59,8 @@ const (
 	HEADER_INDEX_BATCH_SIZE = uint32(2000) //Bath size of saving header index
 )
 
+const STATE_HASH_HEIGHT = 1500000
+
 var (
 	//Storage save path.
 	DBDirEvent          = "ledgerevent"
@@ -219,22 +221,22 @@ func (this *LedgerStoreImp) initGenesisBlock() error {
 }
 
 func (this *LedgerStoreImp) init() error {
-	err := this.initCurrentBlock()
+	err := this.loadCurrentBlock()
 	if err != nil {
-		return fmt.Errorf("initCurrentBlock error %s", err)
+		return fmt.Errorf("loadCurrentBlock error %s", err)
 	}
-	err = this.initHeaderIndexList()
+	err = this.loadHeaderIndexList()
 	if err != nil {
-		return fmt.Errorf("initHeaderIndexList error %s", err)
+		return fmt.Errorf("loadHeaderIndexList error %s", err)
 	}
-	err = this.initStore()
+	err = this.recoverStore()
 	if err != nil {
-		return fmt.Errorf("initStore error %s", err)
+		return fmt.Errorf("recoverStore error %s", err)
 	}
 	return nil
 }
 
-func (this *LedgerStoreImp) initCurrentBlock() error {
+func (this *LedgerStoreImp) loadCurrentBlock() error {
 	currentBlockHash, currentBlockHeight, err := this.blockStore.GetCurrentBlock()
 	if err != nil {
 		return fmt.Errorf("LoadCurrentBlock error %s", err)
@@ -245,7 +247,7 @@ func (this *LedgerStoreImp) initCurrentBlock() error {
 	return nil
 }
 
-func (this *LedgerStoreImp) initHeaderIndexList() error {
+func (this *LedgerStoreImp) loadHeaderIndexList() error {
 	currBlockHeight := this.GetCurrentBlockHeight()
 	headerIndex, err := this.blockStore.GetHeaderIndexList()
 	if err != nil {
@@ -269,7 +271,7 @@ func (this *LedgerStoreImp) initHeaderIndexList() error {
 	return nil
 }
 
-func (this *LedgerStoreImp) initStore() error {
+func (this *LedgerStoreImp) recoverStore() error {
 	blockHeight := this.GetCurrentBlockHeight()
 
 	_, stateHeight, err := this.stateStore.GetCurrentBlock()
@@ -612,7 +614,7 @@ func (this *LedgerStoreImp) saveBlockToEventStore(block *types.Block) error {
 	return nil
 }
 
-func (this *LedgerStoreImp) isSavingBlock() bool {
+func (this *LedgerStoreImp) tryGetSavingBlockLock() bool {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 
@@ -623,7 +625,7 @@ func (this *LedgerStoreImp) isSavingBlock() bool {
 	return true
 }
 
-func (this *LedgerStoreImp) resetSavingBlock() {
+func (this *LedgerStoreImp) releaseSavingBlockLock() {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 	this.savingBlock = false
@@ -633,11 +635,11 @@ func (this *LedgerStoreImp) resetSavingBlock() {
 func (this *LedgerStoreImp) saveBlock(block *types.Block) error {
 	blockHash := block.Hash()
 	blockHeight := block.Header.Height
-	if this.isSavingBlock() {
+	if this.tryGetSavingBlockLock() {
 		//hash already saved or is saving
 		return nil
 	}
-	defer this.resetSavingBlock()
+	defer this.releaseSavingBlockLock()
 	if blockHeight > 0 && blockHeight != (this.GetCurrentBlockHeight()+1) {
 		return nil
 	}

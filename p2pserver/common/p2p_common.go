@@ -145,9 +145,11 @@ type AppendHeaders struct {
 }
 
 type AppendBlock struct {
-	FromID    uint64       // The peer id
-	BlockSize uint32       // Block size
-	Block     *types.Block // Block to be added to the ledger
+	FromID     uint64         // The peer id
+	BlockSize  uint32         // Block size
+	Block      *types.Block   // Block to be added to the ledger
+	Hash       common.Uint256 // WriteSet hash
+	MerkelRoot common.Uint256 // MerkelRoot
 }
 
 //ParseIPAddr return ip address

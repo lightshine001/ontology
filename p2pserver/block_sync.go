@@ -215,8 +215,10 @@ func (this *SyncFlightInfo) GetStartTime() time.Time {
 
 //BlockInfo is used for saving block information in cache
 type BlockInfo struct {
-	nodeID uint64
-	block  *types.Block
+	nodeID     uint64
+	block      *types.Block
+	hash       common.Uint256
+	merkelRoot common.Uint256
 }
 
 //BlockSyncMgr is the manager class to deal with block sync
@@ -482,7 +484,8 @@ func (this *BlockSyncMgr) OnHeaderReceive(fromID uint64, headers []*types.Header
 }
 
 // OnBlockReceive receive block from net
-func (this *BlockSyncMgr) OnBlockReceive(fromID uint64, blockSize uint32, block *types.Block) {
+func (this *BlockSyncMgr) OnBlockReceive(fromID uint64, blockSize uint32, block *types.Block,
+	hash, merkelRoot common.Uint256) {
 	height := block.Header.Height
 	blockHash := block.Hash()
 	log.Trace("[p2p]OnBlockReceive Height:%d", height)
@@ -504,7 +507,7 @@ func (this *BlockSyncMgr) OnBlockReceive(fromID uint64, blockSize uint32, block 
 		return
 	}
 
-	this.addBlockCache(fromID, block)
+	this.addBlockCache(fromID, block, hash, merkelRoot)
 	go this.saveBlock()
 	this.syncBlock()
 }
@@ -568,25 +571,29 @@ func (this *BlockSyncMgr) releaseSyncBlockLock() {
 	this.syncBlockLock = false
 }
 
-func (this *BlockSyncMgr) addBlockCache(nodeID uint64, block *types.Block) bool {
+func (this *BlockSyncMgr) addBlockCache(nodeID uint64, block *types.Block,
+	hash, merkelRoot common.Uint256) bool {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 	blockInfo := &BlockInfo{
-		nodeID: nodeID,
-		block:  block,
+		nodeID:     nodeID,
+		block:      block,
+		hash:       hash,
+		merkelRoot: merkelRoot,
 	}
 	this.blocksCache[block.Header.Height] = blockInfo
 	return true
 }
 
-func (this *BlockSyncMgr) getBlockCache(blockHeight uint32) (uint64, *types.Block) {
+func (this *BlockSyncMgr) getBlockCache(blockHeight uint32) (uint64, *types.Block,
+	common.Uint256, common.Uint256) {
 	this.lock.RLock()
 	defer this.lock.RUnlock()
 	blockInfo, ok := this.blocksCache[blockHeight]
 	if !ok {
-		return 0, nil
+		return 0, nil, common.UINT256_EMPTY, common.UINT256_EMPTY
 	}
-	return blockInfo.nodeID, blockInfo.block
+	return blockInfo.nodeID, blockInfo.block, blockInfo.hash, blockInfo.merkelRoot
 }
 
 func (this *BlockSyncMgr) delBlockCache(blockHeight uint32) {
@@ -626,11 +633,11 @@ func (this *BlockSyncMgr) saveBlock() {
 	}
 	this.lock.Unlock()
 	for {
-		fromID, nextBlock := this.getBlockCache(nextBlockHeight)
+		fromID, nextBlock, hash, merkelRoot := this.getBlockCache(nextBlockHeight)
 		if nextBlock == nil {
 			return
 		}
-		err := this.ledger.AddBlock(nextBlock)
+		err := this.ledger.AddBlock(nextBlock, hash, merkelRoot)
 		this.delBlockCache(nextBlockHeight)
 		if err != nil {
 			this.addErrorRespCnt(fromID)

@@ -162,9 +162,11 @@ func BlockHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args
 	if pid != nil {
 		var block = data.Payload.(*msgTypes.Block)
 		input := &msgCommon.AppendBlock{
-			FromID:    data.Id,
-			BlockSize: data.PayloadSize,
-			Block:     block.Blk,
+			FromID:     data.Id,
+			BlockSize:  data.PayloadSize,
+			Block:      block.Blk,
+			Hash:       block.Hash,
+			MerkelRoot: block.MerkelRoot,
 		}
 		pid.Tell(input)
 	}
@@ -505,16 +507,17 @@ func DataReqHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, ar
 	case common.BLOCK:
 		reqID := fmt.Sprintf("%x%s", reqType, hash.ToHexString())
 		data := getRespCacheValue(reqID)
-		var block *types.Block
-		var err error
+		var msg *msgTypes.Block
 		if data != nil {
 			switch data.(type) {
-			case *types.Block:
-				block = data.(*types.Block)
+			case *msgTypes.Block:
+				msg = data.(*msgTypes.Block)
 			}
 		}
-		if block == nil {
-			block, err = ledger.DefLedger.GetBlockByHash(hash)
+		if msg == nil {
+			var writeSetHash common.Uint256
+			var merkelRoot common.Uint256
+			block, err := ledger.DefLedger.GetBlockByHash(hash)
 			if err != nil || block == nil || block.Header == nil {
 				log.Debug("[p2p]can't get block by hash: ", hash,
 					" ,send not found message")
@@ -526,12 +529,13 @@ func DataReqHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, ar
 				}
 				return
 			}
-			saveRespCache(reqID, block)
+			// Todo: get writeSetHash and merkelRoot from ledger
+			msg = msgpack.NewBlock(block, writeSetHash, merkelRoot)
+			saveRespCache(reqID, msg)
 		}
 		log.Debug("[p2p]block height is ", block.Header.Height,
 			" ,hash is ", hash)
-		msg := msgpack.NewBlock(block)
-		err = p2p.Send(remotePeer, msg, false)
+		err := p2p.Send(remotePeer, msg, false)
 		if err != nil {
 			log.Warn(err)
 			return

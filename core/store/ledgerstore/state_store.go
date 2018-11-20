@@ -74,6 +74,14 @@ func (self *StateStore) NewBatch() {
 	self.store.NewBatch()
 }
 
+func (self *StateStore) BatchPutRawKeyVal(key, val []byte) {
+	self.store.BatchPut(key, val)
+}
+
+func (self *StateStore) BatchDeleteRawKey(key []byte) {
+	self.store.BatchDelete(key)
+}
+
 func (self *StateStore) init(currBlockHeight uint32) error {
 	treeSize, hashes, err := self.GetMerkleTree()
 	if err != nil && err != scom.ErrNotFound {

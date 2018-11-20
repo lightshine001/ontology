@@ -551,10 +551,14 @@ func (this *LedgerStoreImp) saveBlockToBlockStore(block *types.Block) error {
 	return nil
 }
 
-func (this *LedgerStoreImp) saveBlockToStateStore(block *types.Block) error {
-	blockHash := block.Hash()
-	blockHeight := block.Header.Height
+type ExecuteResult struct {
+	writeSet   *overlaydb.MemDB
+	notify     []*event.ExecuteNotify
+	Hash       common.Uint256
+	MerkleRoot common.Uint256
+}
 
+func (this *LedgerStoreImp) executeBlock(block *types.Block) (result ExecuteResult, err error) {
 	overlay := this.stateStore.NewOverlayDB()
 
 	if block.Header.Height != 0 {
@@ -564,19 +568,44 @@ func (this *LedgerStoreImp) saveBlockToStateStore(block *types.Block) error {
 			Tx:     &types.Transaction{},
 		}
 
-		if err := refreshGlobalParam(config, storage.NewCacheDB(this.stateStore.NewOverlayDB()), this); err != nil {
-			return err
+		err = refreshGlobalParam(config, storage.NewCacheDB(this.stateStore.NewOverlayDB()), this)
+		if err != nil {
+			return
 		}
 	}
 
 	for _, tx := range block.Transactions {
-		err := this.handleTransaction(overlay, block, tx)
-		if err != nil {
-			return fmt.Errorf("handleTransaction error %s", err)
+		notify, e := this.handleTransaction(overlay, block, tx)
+		if e != nil {
+			err = e
+			return
 		}
+
+		result.notify = append(result.notify, notify)
 	}
 
-	err := this.stateStore.AddMerkleTreeRoot(block.Header.TransactionsRoot)
+	result.Hash = overlay.ChangeHash()
+	result.writeSet = overlay.GetWriteSet()
+	//todo : add merkleroot
+	result.MerkleRoot = result.Hash
+
+	return
+}
+
+func (this *LedgerStoreImp) saveBlockToStateStore(block *types.Block) error {
+	blockHash := block.Hash()
+	blockHeight := block.Header.Height
+
+	result, err := this.executeBlock(block)
+	if err != nil {
+		return err
+	}
+
+	for _, notify := range result.notify {
+		SaveNotify(this.eventStore, notify.TxHash, notify)
+	}
+
+	err = this.stateStore.AddMerkleTreeRoot(block.Header.TransactionsRoot)
 	if err != nil {
 		return fmt.Errorf("AddMerkleTreeRoot error %s", err)
 	}
@@ -586,9 +615,15 @@ func (this *LedgerStoreImp) saveBlockToStateStore(block *types.Block) error {
 		return fmt.Errorf("SaveCurrentBlock error %s", err)
 	}
 
-	stateHash := overlay.ChangeHash()
-	log.Debugf("the state transition hash of block %d is:%s", blockHeight, stateHash.ToHexString())
-	overlay.CommitTo()
+	log.Debugf("the state transition hash of block %d is:%s", blockHeight, result.Hash.ToHexString())
+
+	result.writeSet.ForEach(func(key, val []byte) {
+		if len(val) == 0 {
+			this.stateStore.BatchDeleteRawKey(key)
+		} else {
+			this.stateStore.BatchPutRawKeyVal(key, val)
+		}
+	})
 
 	return nil
 }
@@ -684,30 +719,29 @@ func (this *LedgerStoreImp) saveBlock(block *types.Block) error {
 	return nil
 }
 
-func (this *LedgerStoreImp) handleTransaction(overlay *overlaydb.OverlayDB, block *types.Block, tx *types.Transaction) error {
+func (this *LedgerStoreImp) handleTransaction(overlay *overlaydb.OverlayDB, block *types.Block, tx *types.Transaction) (*event.ExecuteNotify, error) {
 	txHash := tx.Hash()
 	notify := &event.ExecuteNotify{TxHash: txHash, State: event.CONTRACT_STATE_FAIL}
 	switch tx.TxType {
 	case types.Deploy:
 		err := this.stateStore.HandleDeployTransaction(this, overlay, tx, block, notify)
 		if overlay.Error() != nil {
-			return fmt.Errorf("HandleDeployTransaction tx %s error %s", txHash.ToHexString(), overlay.Error())
+			return nil, fmt.Errorf("HandleDeployTransaction tx %s error %s", txHash.ToHexString(), overlay.Error())
 		}
 		if err != nil {
 			log.Debugf("HandleDeployTransaction tx %s error %s", txHash.ToHexString(), err)
 		}
-		SaveNotify(this.eventStore, txHash, notify)
 	case types.Invoke:
 		err := this.stateStore.HandleInvokeTransaction(this, overlay, tx, block, notify)
 		if overlay.Error() != nil {
-			return fmt.Errorf("HandleInvokeTransaction tx %s error %s", txHash.ToHexString(), overlay.Error())
+			return nil, fmt.Errorf("HandleInvokeTransaction tx %s error %s", txHash.ToHexString(), overlay.Error())
 		}
 		if err != nil {
 			log.Debugf("HandleInvokeTransaction tx %s error %s", txHash.ToHexString(), err)
 		}
-		SaveNotify(this.eventStore, txHash, notify)
 	}
-	return nil
+
+	return notify, nil
 }
 
 func (this *LedgerStoreImp) saveHeaderIndexList() error {

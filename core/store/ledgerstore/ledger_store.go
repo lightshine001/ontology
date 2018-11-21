@@ -29,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	"crypto/sha256"
 	"github.com/ontio/ontology-crypto/keypair"
 	"github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/common/config"
@@ -640,8 +641,41 @@ func (this *LedgerStoreImp) executeBlock(block *types.Block) (result ExecuteResu
 
 	result.Hash = overlay.ChangeHash()
 	result.writeSet = overlay.GetWriteSet()
-	//todo : add merkleroot
-	result.MerkleRoot = result.Hash
+	if block.Header.Height < STATE_HASH_HEIGHT {
+		result.MerkleRoot = common.UINT256_EMPTY
+	} else if block.Header.Height == STATE_HASH_HEIGHT {
+		stateDiff := sha256.New()
+		iter := overlay.NewIterator([]byte{byte(scom.ST_CONTRACT)})
+		for has := iter.First(); has; has = iter.Next() {
+			key := iter.Key()
+			val := iter.Value()
+			stateDiff.Write(key)
+			stateDiff.Write(val)
+		}
+		iter.Release()
+		err = iter.Error()
+		if err != nil {
+			return
+		}
+
+		iter = overlay.NewIterator([]byte{byte(scom.ST_STORAGE)})
+		for has := iter.First(); has; has = iter.Next() {
+			key := iter.Key()
+			val := iter.Value()
+			stateDiff.Write(key)
+			stateDiff.Write(val)
+		}
+		iter.Release()
+		err = iter.Error()
+		if err != nil {
+			return
+		}
+
+		stateDiff.Sum(result.MerkleRoot[:0])
+		result.Hash = result.MerkleRoot
+	} else {
+		result.MerkleRoot = this.stateStore.GetStateMerkleRootWithNewHash(result.Hash)
+	}
 
 	return
 }
@@ -654,9 +688,14 @@ func (this *LedgerStoreImp) saveBlockToStateStore(block *types.Block, result Exe
 		SaveNotify(this.eventStore, notify.TxHash, notify)
 	}
 
-	err := this.stateStore.AddMerkleTreeRoot(block.Header.TransactionsRoot)
+	err := this.stateStore.AddStateMerkleTreeRoot(blockHeight, result.Hash)
 	if err != nil {
-		return fmt.Errorf("AddMerkleTreeRoot error %s", err)
+		return fmt.Errorf("AddBlockMerkleTreeRoot error %s", err)
+	}
+
+	err = this.stateStore.AddBlockMerkleTreeRoot(block.Header.TransactionsRoot)
+	if err != nil {
+		return fmt.Errorf("AddBlockMerkleTreeRoot error %s", err)
 	}
 
 	err = this.stateStore.SaveCurrentBlock(blockHeight, blockHash)

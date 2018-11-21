@@ -23,9 +23,10 @@ type DataEntryPrefix byte
 
 const (
 	// DATA
-	DATA_BLOCK       DataEntryPrefix = 0x00 //Block height => block hash key prefix
-	DATA_HEADER                      = 0x01 //Block hash => block hash key prefix
-	DATA_TRANSACTION                 = 0x02 //Transction hash = > transaction key prefix
+	DATA_BLOCK             DataEntryPrefix = 0x00 //Block height => block hash key prefix
+	DATA_HEADER                            = 0x01 //Block hash => block hash key prefix
+	DATA_TRANSACTION                       = 0x02 //Transction hash = > transaction key prefix
+	DATA_STATE_MERKLE_ROOT                 = 0x21 // block height => write set hash + state merkle root
 
 	// Transaction
 	ST_BOOKKEEPER DataEntryPrefix = 0x03 //BookKeeper state key prefix

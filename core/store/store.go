@@ -30,7 +30,7 @@ import (
 )
 
 type ExecuteResult struct {
-	writeSet   *overlaydb.MemDB
+	WriteSet   *overlaydb.MemDB
 	Hash       common.Uint256
 	MerkleRoot common.Uint256
 	Notify     []*event.ExecuteNotify
@@ -41,10 +41,10 @@ type LedgerStore interface {
 	InitLedgerStoreWithGenesisBlock(genesisblock *types.Block, defaultBookkeeper []keypair.PublicKey) error
 	Close() error
 	AddHeaders(headers []*types.Header) error
-	AddBlock(block *types.Block) error
-	//AddBlock(block *types.Block, merkleRoot common.Uint256) error
-	//ExecuteBlock(b *types.Block) (ExecuteResult, error)   // 共识调用
-	//SubmitBlock(b *types.Block, exec ExecuteResult) error // 共识调用
+	AddBlock(block *types.Block, stateMerkleRoot common.Uint256) error
+	ExecuteBlock(b *types.Block) (ExecuteResult, error)   // 共识调用
+	SubmitBlock(b *types.Block, exec ExecuteResult) error // 共识调用
+	GetStateMerkleRoot(height uint32) (result common.Uint256, err error)
 	GetCurrentBlockHash() common.Uint256
 	GetCurrentBlockHeight() uint32
 	GetCurrentHeaderHeight() uint32

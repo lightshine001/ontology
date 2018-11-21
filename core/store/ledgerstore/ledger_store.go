@@ -39,6 +39,7 @@ import (
 	"github.com/ontio/ontology/core/payload"
 	"github.com/ontio/ontology/core/signature"
 	"github.com/ontio/ontology/core/states"
+	"github.com/ontio/ontology/core/store"
 	scom "github.com/ontio/ontology/core/store/common"
 	"github.com/ontio/ontology/core/store/overlaydb"
 	"github.com/ontio/ontology/core/types"
@@ -146,7 +147,12 @@ func (this *LedgerStoreImp) InitLedgerStoreWithGenesisBlock(genesisBlock *types.
 		if err != nil {
 			return fmt.Errorf("SaveBookkeeperState error %s", err)
 		}
-		err = this.saveBlock(genesisBlock)
+
+		result, err := this.executeBlock(genesisBlock)
+		if err != nil {
+			return err
+		}
+		err = this.submitBlock(genesisBlock, result)
 		if err != nil {
 			return fmt.Errorf("save genesis block error %s", err)
 		}
@@ -511,11 +517,10 @@ func (this *LedgerStoreImp) AddHeaders(headers []*types.Header) error {
 }
 
 func (this *LedgerStoreImp) GetStateMerkleRoot(height uint32) (common.Uint256, error) {
-	//todo
-	return common.UINT256_EMPTY, nil
+	return this.stateStore.GetStateMerkleRoot(height)
 }
 
-func (this *LedgerStoreImp) ExecuteBlock(block *types.Block) (result ExecuteResult, err error) {
+func (this *LedgerStoreImp) ExecuteBlock(block *types.Block) (result store.ExecuteResult, err error) {
 	this.getSavingBlockLock()
 	defer this.releaseSavingBlockLock()
 	currBlockHeight := this.GetCurrentBlockHeight()
@@ -534,7 +539,7 @@ func (this *LedgerStoreImp) ExecuteBlock(block *types.Block) (result ExecuteResu
 	return
 }
 
-func (this *LedgerStoreImp) SubmitBlock(block *types.Block, result ExecuteResult) error {
+func (this *LedgerStoreImp) SubmitBlock(block *types.Block, result store.ExecuteResult) error {
 	this.getSavingBlockLock()
 	defer this.releaseSavingBlockLock()
 	currBlockHeight := this.GetCurrentBlockHeight()
@@ -562,7 +567,7 @@ func (this *LedgerStoreImp) SubmitBlock(block *types.Block, result ExecuteResult
 
 //AddBlock add the block to store.
 //When the block is not the next block, it will be cache. until the missing block arrived
-func (this *LedgerStoreImp) AddBlock(block *types.Block) error {
+func (this *LedgerStoreImp) AddBlock(block *types.Block, stateMerkleRoot common.Uint256) error {
 	currBlockHeight := this.GetCurrentBlockHeight()
 	blockHeight := block.Header.Height
 	if blockHeight <= currBlockHeight {
@@ -578,7 +583,7 @@ func (this *LedgerStoreImp) AddBlock(block *types.Block) error {
 		return fmt.Errorf("verifyHeader error %s", err)
 	}
 
-	err = this.saveBlock(block)
+	err = this.saveBlock(block, stateMerkleRoot)
 	if err != nil {
 		return fmt.Errorf("saveBlock error %s", err)
 	}
@@ -607,14 +612,7 @@ func (this *LedgerStoreImp) saveBlockToBlockStore(block *types.Block) error {
 	return nil
 }
 
-type ExecuteResult struct {
-	writeSet   *overlaydb.MemDB
-	notify     []*event.ExecuteNotify
-	Hash       common.Uint256
-	MerkleRoot common.Uint256
-}
-
-func (this *LedgerStoreImp) executeBlock(block *types.Block) (result ExecuteResult, err error) {
+func (this *LedgerStoreImp) executeBlock(block *types.Block) (result store.ExecuteResult, err error) {
 	overlay := this.stateStore.NewOverlayDB()
 	if block.Header.Height != 0 {
 		config := &smartcontract.Config{
@@ -636,11 +634,11 @@ func (this *LedgerStoreImp) executeBlock(block *types.Block) (result ExecuteResu
 			return
 		}
 
-		result.notify = append(result.notify, notify)
+		result.Notify = append(result.Notify, notify)
 	}
 
 	result.Hash = overlay.ChangeHash()
-	result.writeSet = overlay.GetWriteSet()
+	result.WriteSet = overlay.GetWriteSet()
 	if block.Header.Height < STATE_HASH_HEIGHT {
 		result.MerkleRoot = common.UINT256_EMPTY
 	} else if block.Header.Height == STATE_HASH_HEIGHT {
@@ -680,11 +678,11 @@ func (this *LedgerStoreImp) executeBlock(block *types.Block) (result ExecuteResu
 	return
 }
 
-func (this *LedgerStoreImp) saveBlockToStateStore(block *types.Block, result ExecuteResult) error {
+func (this *LedgerStoreImp) saveBlockToStateStore(block *types.Block, result store.ExecuteResult) error {
 	blockHash := block.Hash()
 	blockHeight := block.Header.Height
 
-	for _, notify := range result.notify {
+	for _, notify := range result.Notify {
 		SaveNotify(this.eventStore, notify.TxHash, notify)
 	}
 
@@ -705,7 +703,7 @@ func (this *LedgerStoreImp) saveBlockToStateStore(block *types.Block, result Exe
 
 	log.Debugf("the state transition hash of block %d is:%s", blockHeight, result.Hash.ToHexString())
 
-	result.writeSet.ForEach(func(key, val []byte) {
+	result.WriteSet.ForEach(func(key, val []byte) {
 		if len(val) == 0 {
 			this.stateStore.BatchDeleteRawKey(key)
 		} else {
@@ -760,7 +758,7 @@ func (this *LedgerStoreImp) releaseSavingBlockLock() {
 }
 
 //saveBlock do the job of execution samrt contract and commit block to store.
-func (this *LedgerStoreImp) submitBlock(block *types.Block, result ExecuteResult) error {
+func (this *LedgerStoreImp) submitBlock(block *types.Block, result store.ExecuteResult) error {
 	blockHash := block.Hash()
 	blockHeight := block.Header.Height
 
@@ -805,7 +803,7 @@ func (this *LedgerStoreImp) submitBlock(block *types.Block, result ExecuteResult
 }
 
 //saveBlock do the job of execution samrt contract and commit block to store.
-func (this *LedgerStoreImp) saveBlock(block *types.Block) error {
+func (this *LedgerStoreImp) saveBlock(block *types.Block, stateMerkleRoot common.Uint256) error {
 	blockHeight := block.Header.Height
 	if this.tryGetSavingBlockLock() {
 		//hash already saved or is saving
@@ -819,6 +817,10 @@ func (this *LedgerStoreImp) saveBlock(block *types.Block) error {
 	result, err := this.executeBlock(block)
 	if err != nil {
 		return err
+	}
+
+	if result.MerkleRoot != stateMerkleRoot {
+		return errors.NewErr("state merkle root mismatch!")
 	}
 
 	return this.submitBlock(block, result)

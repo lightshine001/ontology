@@ -71,27 +71,28 @@ var (
 
 //LedgerStoreImp is main store struct fo ledger
 type LedgerStoreImp struct {
-	blockStore         *BlockStore                      //BlockStore for saving block & transaction data
-	stateStore         *StateStore                      //StateStore for saving state data, like balance, smart contract execution result, and so on.
-	eventStore         *EventStore                      //EventStore for saving log those gen after smart contract executed.
-	storedIndexCount   uint32                           //record the count of have saved block index
-	currBlockHeight    uint32                           //Current block height
-	currBlockHash      common.Uint256                   //Current block hash
-	headerCache        map[common.Uint256]*types.Header //BlockHash => Header
-	headerIndex        map[uint32]common.Uint256        //Header index, Mapping header height => block hash
-	savingBlock        bool                             //is saving block now
-	vbftPeerInfoheader map[string]uint32                //pubInfo save pubkey,peerindex
-	vbftPeerInfoblock  map[string]uint32                //pubInfo save pubkey,peerindex
-	lock               sync.RWMutex
+	blockStore           *BlockStore                      //BlockStore for saving block & transaction data
+	stateStore           *StateStore                      //StateStore for saving state data, like balance, smart contract execution result, and so on.
+	eventStore           *EventStore                      //EventStore for saving log those gen after smart contract executed.
+	storedIndexCount     uint32                           //record the count of have saved block index
+	currBlockHeight      uint32                           //Current block height
+	currBlockHash        common.Uint256                   //Current block hash
+	headerCache          map[common.Uint256]*types.Header //BlockHash => Header
+	headerIndex          map[uint32]common.Uint256        //Header index, Mapping header height => block hash
+	savingBlockSemaphore chan bool
+	vbftPeerInfoheader   map[string]uint32 //pubInfo save pubkey,peerindex
+	vbftPeerInfoblock    map[string]uint32 //pubInfo save pubkey,peerindex
+	lock                 sync.RWMutex
 }
 
 //NewLedgerStore return LedgerStoreImp instance
 func NewLedgerStore(dataDir string) (*LedgerStoreImp, error) {
 	ledgerStore := &LedgerStoreImp{
-		headerIndex:        make(map[uint32]common.Uint256),
-		headerCache:        make(map[common.Uint256]*types.Header, 0),
-		vbftPeerInfoheader: make(map[string]uint32),
-		vbftPeerInfoblock:  make(map[string]uint32),
+		headerIndex:          make(map[uint32]common.Uint256),
+		headerCache:          make(map[common.Uint256]*types.Header, 0),
+		vbftPeerInfoheader:   make(map[string]uint32),
+		vbftPeerInfoblock:    make(map[string]uint32),
+		savingBlockSemaphore: make(chan bool, 1),
 	}
 
 	blockStore, err := NewBlockStore(fmt.Sprintf("%s%s%s", dataDir, string(os.PathSeparator), DBDirBlock), true)
@@ -289,7 +290,11 @@ func (this *LedgerStoreImp) recoverStore() error {
 		}
 		this.eventStore.NewBatch()
 		this.stateStore.NewBatch()
-		err = this.saveBlockToStateStore(block)
+		result, err := this.executeBlock(block)
+		if err != nil {
+			return err
+		}
+		err = this.saveBlockToStateStore(block, result)
 		if err != nil {
 			return fmt.Errorf("save to state store height:%d error:%s", i, err)
 		}
@@ -504,6 +509,56 @@ func (this *LedgerStoreImp) AddHeaders(headers []*types.Header) error {
 	return nil
 }
 
+func (this *LedgerStoreImp) GetStateMerkleRoot(height uint32) (common.Uint256, error) {
+	//todo
+	return common.UINT256_EMPTY, nil
+}
+
+func (this *LedgerStoreImp) ExecuteBlock(block *types.Block) (result ExecuteResult, err error) {
+	this.getSavingBlockLock()
+	defer this.releaseSavingBlockLock()
+	currBlockHeight := this.GetCurrentBlockHeight()
+	blockHeight := block.Header.Height
+	if blockHeight <= currBlockHeight {
+		result.MerkleRoot, err = this.GetStateMerkleRoot(blockHeight)
+		return
+	}
+	nextBlockHeight := currBlockHeight + 1
+	if blockHeight != nextBlockHeight {
+		err = fmt.Errorf("block height %d not equal next block height %d", blockHeight, nextBlockHeight)
+		return
+	}
+
+	result, err = this.executeBlock(block)
+	return
+}
+
+func (this *LedgerStoreImp) SubmitBlock(block *types.Block, result ExecuteResult) error {
+	this.getSavingBlockLock()
+	defer this.releaseSavingBlockLock()
+	currBlockHeight := this.GetCurrentBlockHeight()
+	blockHeight := block.Header.Height
+	if blockHeight <= currBlockHeight {
+		return nil
+	}
+	nextBlockHeight := currBlockHeight + 1
+	if blockHeight != nextBlockHeight {
+		return fmt.Errorf("block height %d not equal next block height %d", blockHeight, nextBlockHeight)
+	}
+	var err error
+	this.vbftPeerInfoblock, err = this.verifyHeader(block.Header, this.vbftPeerInfoblock)
+	if err != nil {
+		return fmt.Errorf("verifyHeader error %s", err)
+	}
+
+	err = this.submitBlock(block, result)
+	if err != nil {
+		return fmt.Errorf("saveBlock error %s", err)
+	}
+	this.delHeaderCache(block.Hash())
+	return nil
+}
+
 //AddBlock add the block to store.
 //When the block is not the next block, it will be cache. until the missing block arrived
 func (this *LedgerStoreImp) AddBlock(block *types.Block) error {
@@ -560,7 +615,6 @@ type ExecuteResult struct {
 
 func (this *LedgerStoreImp) executeBlock(block *types.Block) (result ExecuteResult, err error) {
 	overlay := this.stateStore.NewOverlayDB()
-
 	if block.Header.Height != 0 {
 		config := &smartcontract.Config{
 			Time:   block.Header.Timestamp,
@@ -592,20 +646,15 @@ func (this *LedgerStoreImp) executeBlock(block *types.Block) (result ExecuteResu
 	return
 }
 
-func (this *LedgerStoreImp) saveBlockToStateStore(block *types.Block) error {
+func (this *LedgerStoreImp) saveBlockToStateStore(block *types.Block, result ExecuteResult) error {
 	blockHash := block.Hash()
 	blockHeight := block.Header.Height
-
-	result, err := this.executeBlock(block)
-	if err != nil {
-		return err
-	}
 
 	for _, notify := range result.notify {
 		SaveNotify(this.eventStore, notify.TxHash, notify)
 	}
 
-	err = this.stateStore.AddMerkleTreeRoot(block.Header.TransactionsRoot)
+	err := this.stateStore.AddMerkleTreeRoot(block.Header.TransactionsRoot)
 	if err != nil {
 		return fmt.Errorf("AddMerkleTreeRoot error %s", err)
 	}
@@ -649,35 +698,32 @@ func (this *LedgerStoreImp) saveBlockToEventStore(block *types.Block) error {
 	return nil
 }
 
-func (this *LedgerStoreImp) tryGetSavingBlockLock() bool {
-	this.lock.Lock()
-	defer this.lock.Unlock()
-
-	if !this.savingBlock {
-		this.savingBlock = true
+func (this *LedgerStoreImp) tryGetSavingBlockLock() (hasLocked bool) {
+	select {
+	case this.savingBlockSemaphore <- true:
 		return false
+	default:
+		return true
 	}
-	return true
+}
+
+func (this *LedgerStoreImp) getSavingBlockLock() {
+	this.savingBlockSemaphore <- true
 }
 
 func (this *LedgerStoreImp) releaseSavingBlockLock() {
-	this.lock.Lock()
-	defer this.lock.Unlock()
-	this.savingBlock = false
+	select {
+	case <-this.savingBlockSemaphore:
+		return
+	default:
+		panic("can not release in unlocked state")
+	}
 }
 
 //saveBlock do the job of execution samrt contract and commit block to store.
-func (this *LedgerStoreImp) saveBlock(block *types.Block) error {
+func (this *LedgerStoreImp) submitBlock(block *types.Block, result ExecuteResult) error {
 	blockHash := block.Hash()
 	blockHeight := block.Header.Height
-	if this.tryGetSavingBlockLock() {
-		//hash already saved or is saving
-		return nil
-	}
-	defer this.releaseSavingBlockLock()
-	if blockHeight > 0 && blockHeight != (this.GetCurrentBlockHeight()+1) {
-		return nil
-	}
 
 	this.blockStore.NewBatch()
 	this.stateStore.NewBatch()
@@ -686,7 +732,7 @@ func (this *LedgerStoreImp) saveBlock(block *types.Block) error {
 	if err != nil {
 		return fmt.Errorf("save to block store height:%d error:%s", blockHeight, err)
 	}
-	err = this.saveBlockToStateStore(block)
+	err = this.saveBlockToStateStore(block, result)
 	if err != nil {
 		return fmt.Errorf("save to state store height:%d error:%s", blockHeight, err)
 	}
@@ -717,6 +763,26 @@ func (this *LedgerStoreImp) saveBlock(block *types.Block) error {
 			})
 	}
 	return nil
+}
+
+//saveBlock do the job of execution samrt contract and commit block to store.
+func (this *LedgerStoreImp) saveBlock(block *types.Block) error {
+	blockHeight := block.Header.Height
+	if this.tryGetSavingBlockLock() {
+		//hash already saved or is saving
+		return nil
+	}
+	defer this.releaseSavingBlockLock()
+	if blockHeight > 0 && blockHeight != (this.GetCurrentBlockHeight()+1) {
+		return nil
+	}
+
+	result, err := this.executeBlock(block)
+	if err != nil {
+		return err
+	}
+
+	return this.submitBlock(block, result)
 }
 
 func (this *LedgerStoreImp) handleTransaction(overlay *overlaydb.OverlayDB, block *types.Block, tx *types.Transaction) (*event.ExecuteNotify, error) {

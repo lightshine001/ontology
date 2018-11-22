@@ -47,11 +47,10 @@ func NewAddrReq() mt.Message {
 }
 
 ///block package
-func NewBlock(bk *ct.Block, hash, merkelRoot common.Uint256) mt.Message {
+func NewBlock(bk *ct.Block, merkelRoot common.Uint256) mt.Message {
 	log.Trace()
 	var blk mt.Block
 	blk.Blk = bk
-	blk.Hash = hash
 	blk.MerkelRoot = merkelRoot
 
 	return &blk

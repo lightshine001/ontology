@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 
+	com "github.com/ontio/ontology/common"
 	"github.com/ontio/ontology/core/types"
 )
 
@@ -145,11 +146,10 @@ type AppendHeaders struct {
 }
 
 type AppendBlock struct {
-	FromID     uint64         // The peer id
-	BlockSize  uint32         // Block size
-	Block      *types.Block   // Block to be added to the ledger
-	Hash       common.Uint256 // WriteSet hash
-	MerkelRoot common.Uint256 // MerkelRoot
+	FromID     uint64       // The peer id
+	BlockSize  uint32       // Block size
+	Block      *types.Block // Block to be added to the ledger
+	MerkelRoot com.Uint256  // MerkelRoot
 }
 
 //ParseIPAddr return ip address

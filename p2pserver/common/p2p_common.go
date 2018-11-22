@@ -149,7 +149,7 @@ type AppendBlock struct {
 	FromID     uint64       // The peer id
 	BlockSize  uint32       // Block size
 	Block      *types.Block // Block to be added to the ledger
-	MerkelRoot com.Uint256  // MerkelRoot
+	MerkleRoot com.Uint256  // MerkleRoot
 }
 
 //ParseIPAddr return ip address

@@ -165,7 +165,7 @@ func BlockHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, args
 			FromID:     data.Id,
 			BlockSize:  data.PayloadSize,
 			Block:      block.Blk,
-			MerkelRoot: block.MerkelRoot,
+			MerkleRoot: block.MerkleRoot,
 		}
 		pid.Tell(input)
 	}
@@ -514,7 +514,7 @@ func DataReqHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, ar
 			}
 		}
 		if msg == nil {
-			var merkelRoot common.Uint256
+			var merkleRoot common.Uint256
 			block, err := ledger.DefLedger.GetBlockByHash(hash)
 			if err != nil || block == nil || block.Header == nil {
 				log.Debug("[p2p]can't get block by hash: ", hash,
@@ -527,7 +527,7 @@ func DataReqHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, ar
 				}
 				return
 			}
-			merkelRoot, err = ledger.DefLedger.GetStateMerkleRoot(block.Header.Height)
+			merkleRoot, err = ledger.DefLedger.GetStateMerkleRoot(block.Header.Height)
 			if err != nil {
 				log.Debugf("[p2p]failed to get state merkel root at height %v, err %v",
 					block.Header.Height, err)
@@ -539,7 +539,7 @@ func DataReqHandle(data *msgTypes.MsgPayload, p2p p2p.P2P, pid *evtActor.PID, ar
 				}
 				return
 			}
-			msg = msgpack.NewBlock(block, merkelRoot)
+			msg = msgpack.NewBlock(block, merkleRoot)
 			saveRespCache(reqID, msg)
 		}
 		err := p2p.Send(remotePeer, msg, false)

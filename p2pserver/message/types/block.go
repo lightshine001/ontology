@@ -30,7 +30,7 @@ import (
 
 type Block struct {
 	Blk        *ct.Block
-	MerkelRoot common.Uint256
+	MerkleRoot common.Uint256
 }
 
 //Serialize message payload
@@ -39,7 +39,7 @@ func (this *Block) Serialization(sink *common.ZeroCopySink) error {
 	if err != nil {
 		return errors.NewDetailErr(err, errors.ErrNetPackFail, fmt.Sprintf("serialize error. err:%v", err))
 	}
-	sink.WriteHash(this.MerkelRoot)
+	sink.WriteHash(this.MerkleRoot)
 	return nil
 }
 
@@ -56,7 +56,7 @@ func (this *Block) Deserialization(source *common.ZeroCopySource) error {
 	}
 
 	eof := false
-	this.MerkelRoot, eof = source.NextHash()
+	this.MerkleRoot, eof = source.NextHash()
 	if eof {
 		return io.ErrUnexpectedEOF
 	}
